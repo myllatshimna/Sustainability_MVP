@@ -8,8 +8,8 @@ export const EnvSchema = z.object({
   GOOGLE_CLOUD_PROJECT: z.string().optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
   
-  // Gemini on Vertex AI
-  GEMINI_MODEL_ID: z.string().default('gemini-1.5-flash'),
+  // Gemini on Vertex AI / Google Gen AI
+  GEMINI_MODEL_ID: z.string().default('gemini-2.5-flash'),
   GEMINI_API_KEY: z.string().optional(), // For direct Google GenAI SDK fallback if not using ADC
   
   // Cloud Storage
