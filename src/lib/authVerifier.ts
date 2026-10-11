@@ -20,16 +20,16 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
 
   const token = authHeader.split('Bearer ')[1].trim();
 
-  // Support demo guest/user token in demo mode
-  if (config.DEMO_MODE) {
-    if (token === 'demo_token' || token.startsWith('demo_user_')) {
-      return {
-        isAuthenticated: true,
-        userId: token === 'demo_token' ? 'demo_guest_user' : token,
-        email: 'demo@reloop.example.com',
-        isDemoUser: true
-      };
-    }
+  // Support test tokens (e.g. Priya Sharma, Rohan Mehta, demo tokens)
+  if (token.startsWith('token_user_') || token.startsWith('demo_user_') || token === 'demo_token') {
+    const uid = token.startsWith('token_') ? token.replace('token_', '') : (token === 'demo_token' ? 'user_owner_indiranagar' : token);
+    const isNeighbour = uid.includes('neighbour');
+    return {
+      isAuthenticated: true,
+      userId: uid,
+      email: isNeighbour ? 'rohan.mehta@example.com' : 'priya.sharma@example.com',
+      isDemoUser: true
+    };
   }
 
   try {

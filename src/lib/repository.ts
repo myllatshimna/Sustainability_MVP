@@ -118,9 +118,25 @@ class RepositoryService {
 
   constructor() {
     const config = getAppConfig();
-    if (!config.DEMO_MODE) {
-      this.firestore = new Firestore();
-      this.pubsub = new PubSub();
+    if (!config.DEMO_MODE && config.GOOGLE_CLOUD_PROJECT) {
+      try {
+        this.firestore = new Firestore({
+          projectId: config.GOOGLE_CLOUD_PROJECT,
+          ignoreUndefinedProperties: true
+        });
+      } catch (e) {
+        console.warn('Firestore initialization failed:', e);
+        this.firestore = null;
+      }
+
+      try {
+        this.pubsub = new PubSub({
+          projectId: config.GOOGLE_CLOUD_PROJECT
+        });
+      } catch (e) {
+        console.warn('PubSub initialization failed:', e);
+        this.pubsub = null;
+      }
     }
   }
 

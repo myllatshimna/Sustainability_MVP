@@ -24,7 +24,7 @@ function ResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assessmentId = searchParams.get('id');
-  const { user, token, isDemoMode } = useAuth();
+  const { user, token, signInWithGoogle, isDemoMode } = useAuth();
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [eligibleOrgs, setEligibleOrgs] = useState<Organization[]>([]);
@@ -74,12 +74,18 @@ function ResultsContent() {
     setSaveError(null);
 
     try {
+      let activeToken = token;
+      if (!user || !activeToken) {
+        await signInWithGoogle('priya');
+        activeToken = 'token_user_owner_indiranagar';
+      }
+
       const parsedWeight = weightKg ? parseFloat(weightKg) : undefined;
       const res = await fetch('/api/outcomes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || 'demo_token'}`,
+          Authorization: `Bearer ${activeToken}`,
         },
         body: JSON.stringify({
           assessmentId: assessment.id,

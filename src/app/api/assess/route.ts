@@ -85,12 +85,12 @@ export async function POST(req: NextRequest) {
     const assessment = {
       id: assessmentId,
       city,
-      locality,
-      localityPlaceId,
-      latitude,
-      longitude,
-      radiusKm,
-      imageObjectPath,
+      locality: locality || 'Indiranagar',
+      localityPlaceId: localityPlaceId || null,
+      latitude: latitude ?? 12.9784,
+      longitude: longitude ?? 77.6408,
+      radiusKm: radiusKm ?? 5,
+      imageObjectPath: imageObjectPath || null,
       userDescription,
       observedAttributes: {
         category: aiResult.category,
