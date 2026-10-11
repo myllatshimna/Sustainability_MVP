@@ -138,3 +138,70 @@ describe('Analytics Correctness & Outbox Integrity', () => {
     expect(saved.event.publishStatus).toBe('pending');
   });
 });
+
+describe('Assessment Lifecycle & Recommendation Regression Tests', () => {
+  it('creates packaging assessment, persists ID, retrieves assessment, and generates grounded recommendations', async () => {
+    // 1. Simulate POST /api/assess persistence
+    const testAssessmentId = `as_regression_${Date.now()}`;
+    const initialAssessment = {
+      id: testAssessmentId,
+      city: 'Seattle',
+      userDescription: 'clean corrugated cardboard boxes and paper packaging',
+      observedAttributes: {
+        category: 'packaging',
+        materials: ['cardboard'],
+        condition: 'good_usable',
+        notes: 'Clean corrugated fiber detected.'
+      },
+      questions: [
+        {
+          id: 'packaging_cleanliness',
+          question: 'Is the packaging dry and free from food residue or grease?',
+          options: ['Completely clean and dry', 'Light food residue', 'Soiled/wet']
+        }
+      ],
+      recommendations: [],
+      recommendationEvidenceIds: { ruleIds: [], organizationIds: [] },
+      createdAt: new Date().toISOString(),
+      isDemo: true
+    };
+
+    await repository.saveAssessment(initialAssessment as any);
+
+    // 2. Simulate POST /api/recommendations lookup with the exact returned ID
+    const retrieved = await repository.getAssessment(testAssessmentId);
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.id).toBe(testAssessmentId);
+    expect(retrieved?.city).toBe('Seattle');
+
+    // 3. Match evidence and generate recommendations
+    const orgs = await repository.getOrganizations(retrieved!.city);
+    const rules = await repository.getLocalRules(retrieved!.city);
+
+    const matchingResult = matchEligibleEvidence(
+      {
+        city: retrieved!.city,
+        category: 'packaging',
+        materials: ['cardboard'],
+        condition: 'good_usable'
+      },
+      orgs,
+      rules
+    );
+
+    expect(matchingResult.evidenceFound).toBe(true);
+    expect(matchingResult.eligibleLocalRules.length).toBeGreaterThan(0);
+
+    // Citations validation
+    const citedOrgIds = matchingResult.eligibleOrganizations.map(o => o.id);
+    const citedRuleIds = matchingResult.eligibleLocalRules.map(r => r.id);
+    const validation = validateEvidenceCitations(citedOrgIds, citedRuleIds, orgs, rules);
+    expect(validation.isValid).toBe(true);
+  });
+
+  it('handles genuinely unknown assessment ID returning null and 404 behavior', async () => {
+    const nonExistentId = 'as_non_existent_fake_id_999999';
+    const result = await repository.getAssessment(nonExistentId);
+    expect(result).toBeNull();
+  });
+});

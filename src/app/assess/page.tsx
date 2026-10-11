@@ -162,12 +162,31 @@ function AssessmentContent() {
       </div>
 
       {errorMessage && (
-        <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 flex items-start space-x-3 text-sm">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-semibold">Assessment Error</p>
-            <p>{errorMessage}</p>
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold">Assessment Error</p>
+              <p>{errorMessage}</p>
+              {errorMessage.includes('not found') && (
+                <p className="text-xs text-red-700">
+                  Your assessment session may have expired. Your entered description and answers are preserved below.
+                </p>
+              )}
+            </div>
           </div>
+          {step === 'confirm' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStep('input');
+                setErrorMessage(null);
+              }}
+              className="bg-white border border-red-300 text-red-700 hover:bg-red-100 font-semibold px-3 py-1.5 rounded-lg text-xs whitespace-nowrap self-start sm:self-center transition shadow-2xs"
+            >
+              Restart Assessment
+            </button>
+          )}
         </div>
       )}
 

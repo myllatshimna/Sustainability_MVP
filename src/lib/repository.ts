@@ -9,22 +9,75 @@ import {
   LocalRule
 } from '@/types/models';
 import { DEMO_ORGANIZATIONS, DEMO_LOCAL_RULES, SEATTLE_ORGANIZATIONS, SEATTLE_LOCAL_RULES } from '@/data/curatedSeattle';
-import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+
+// Persistent local demo storage file path (survives dev route isolation, fast-refresh, and server restarts)
+const DEMO_STORE_DIR = path.resolve(process.cwd(), '.reloop_demo_data');
+const DEMO_ASSESSMENTS_FILE = path.join(DEMO_STORE_DIR, 'assessments.json');
+const DEMO_OUTCOMES_FILE = path.join(DEMO_STORE_DIR, 'outcomes.json');
+const DEMO_EVENTS_FILE = path.join(DEMO_STORE_DIR, 'events.json');
+
+function ensureDemoStoreDir() {
+  if (!fs.existsSync(DEMO_STORE_DIR)) {
+    try {
+      fs.mkdirSync(DEMO_STORE_DIR, { recursive: true });
+    } catch (e) {
+      // Ignore if concurrent creation
+    }
+  }
+}
+
+function readJsonFile<T>(filePath: string): Map<string, T> {
+  try {
+    ensureDemoStoreDir();
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(data);
+      return new Map(Object.entries(parsed));
+    }
+  } catch (e) {
+    console.warn(`Failed reading demo store file ${filePath}:`, e);
+  }
+  return new Map();
+}
+
+function writeJsonFile<T>(filePath: string, map: Map<string, T>): void {
+  try {
+    ensureDemoStoreDir();
+    const obj = Object.fromEntries(map.entries());
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn(`Failed writing demo store file ${filePath}:`, e);
+  }
+}
+
+// Global cached maps to support in-memory speed with file persistence
+declare global {
+  var __reloopDemoAssessments: Map<string, Assessment> | undefined;
+  var __reloopDemoOutcomes: Map<string, Outcome> | undefined;
+  var __reloopDemoAnalyticsEvents: Map<string, AnalyticsEvent> | undefined;
+}
+
+if (!globalThis.__reloopDemoAssessments) {
+  globalThis.__reloopDemoAssessments = readJsonFile<Assessment>(DEMO_ASSESSMENTS_FILE);
+}
+if (!globalThis.__reloopDemoOutcomes) {
+  globalThis.__reloopDemoOutcomes = readJsonFile<Outcome>(DEMO_OUTCOMES_FILE);
+}
+if (!globalThis.__reloopDemoAnalyticsEvents) {
+  globalThis.__reloopDemoAnalyticsEvents = readJsonFile<AnalyticsEvent>(DEMO_EVENTS_FILE);
+}
 
 /**
  * Repository and Outbox Service
  * - Handles Firestore storage for Assessments, Outcomes, Organizations, Rules, and Outbox Analytics Events.
  * - Outbox pattern: Outcomes atomically saved alongside pending AnalyticsEvent.
- * - In DEMO_MODE, uses an in-memory/isolated mock store.
+ * - In DEMO_MODE, uses persistent local demo store surviving dev route boundaries and reloads.
  */
 class RepositoryService {
   private firestore: Firestore | null = null;
   private pubsub: PubSub | null = null;
-
-  // In-memory demo stores for isolated local mode
-  private demoAssessments: Map<string, Assessment> = new Map();
-  private demoOutcomes: Map<string, Outcome> = new Map();
-  private demoAnalyticsEvents: Map<string, AnalyticsEvent> = new Map();
 
   constructor() {
     const config = getAppConfig();
@@ -32,6 +85,18 @@ class RepositoryService {
       this.firestore = new Firestore();
       this.pubsub = new PubSub();
     }
+  }
+
+  private get demoAssessments(): Map<string, Assessment> {
+    return globalThis.__reloopDemoAssessments!;
+  }
+
+  private get demoOutcomes(): Map<string, Outcome> {
+    return globalThis.__reloopDemoOutcomes!;
+  }
+
+  private get demoAnalyticsEvents(): Map<string, AnalyticsEvent> {
+    return globalThis.__reloopDemoAnalyticsEvents!;
   }
 
   // --- Directory & Local Rules ---
@@ -87,6 +152,7 @@ class RepositoryService {
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
       this.demoAssessments.set(assessment.id, assessment);
+      writeJsonFile(DEMO_ASSESSMENTS_FILE, this.demoAssessments);
       return;
     }
 
@@ -96,7 +162,23 @@ class RepositoryService {
   async getAssessment(id: string, userId?: string): Promise<Assessment | null> {
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
-      return this.demoAssessments.get(id) || null;
+      let assessment = this.demoAssessments.get(id);
+      if (!assessment) {
+        // Re-read file in case another worker process/route wrote it
+        const diskMap = readJsonFile<Assessment>(DEMO_ASSESSMENTS_FILE);
+        assessment = diskMap.get(id);
+        if (assessment) {
+          this.demoAssessments.set(id, assessment);
+        }
+      }
+      if (!assessment) return null;
+
+      // Strict ownership check in demo mode too if user is bound
+      if (assessment.userId && userId && assessment.userId !== userId) {
+        throw new Error('Access denied: Unauthorized access to private assessment record');
+      }
+
+      return assessment;
     }
 
     const doc = await this.firestore.collection('assessments').doc(id).get();
@@ -138,6 +220,8 @@ class RepositoryService {
     if (config.DEMO_MODE || !this.firestore) {
       this.demoOutcomes.set(outcome.id, outcome);
       this.demoAnalyticsEvents.set(eventId, analyticsEvent);
+      writeJsonFile(DEMO_OUTCOMES_FILE, this.demoOutcomes);
+      writeJsonFile(DEMO_EVENTS_FILE, this.demoAnalyticsEvents);
       return { outcome, event: analyticsEvent };
     }
 
@@ -156,6 +240,12 @@ class RepositoryService {
   async getUserOutcomes(userId: string): Promise<Outcome[]> {
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
+      if (this.demoOutcomes.size === 0) {
+        const diskMap = readJsonFile<Outcome>(DEMO_OUTCOMES_FILE);
+        for (const [k, v] of diskMap.entries()) {
+          this.demoOutcomes.set(k, v);
+        }
+      }
       return Array.from(this.demoOutcomes.values()).filter(o => o.userId === userId);
     }
 
