@@ -1,0 +1,42 @@
+{
+  "name": "ai_buildercup2.0",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google-cloud/bigquery": "^9.2.0",
+    "@google-cloud/firestore": "^9.3.1",
+    "@google-cloud/pubsub": "^6.2.0",
+    "@google-cloud/storage": "^8.4.0",
+    "@google/genai": "^2.28.0",
+    "clsx": "^2.1.1",
+    "firebase": "^13.0.0",
+    "firebase-admin": "^14.5.0",
+    "lucide-react": "^1.55.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.3"
+  }
+}
