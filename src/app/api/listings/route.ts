@@ -8,11 +8,31 @@ import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeItemCondition(cond: string): 'new_with_tags' | 'good_usable' | 'minor_repair_needed' | 'heavily_damaged' | 'broken_scrap' {
+  const c = (cond || '').toLowerCase().replace(/[-\s]/g, '_');
+  if (['new_with_tags', 'new', 'unused', 'mint'].includes(c)) return 'new_with_tags';
+  if (['minor_repair_needed', 'repair_needed', 'needs_repair', 'scratched', 'worn', 'light_wear'].includes(c)) return 'minor_repair_needed';
+  if (['heavily_damaged', 'damaged', 'broken', 'poor'].includes(c)) return 'heavily_damaged';
+  if (['broken_scrap', 'scrap', 'salvage'].includes(c)) return 'broken_scrap';
+  return 'good_usable';
+}
+
+function normalizeItemCategory(cat: string): 'clothing' | 'furniture' | 'packaging' | 'electronics' | 'books_paper' | 'household_goods' | 'other' {
+  const c = (cat || '').toLowerCase().trim();
+  if (c.includes('cloth') || c.includes('textile') || c.includes('apparel')) return 'clothing';
+  if (c.includes('packag') || c.includes('box') || c.includes('cardboard')) return 'packaging';
+  if (c.includes('electron') || c.includes('appliance') || c.includes('gadget')) return 'electronics';
+  if (c.includes('book') || c.includes('paper')) return 'books_paper';
+  if (c.includes('house') || c.includes('kitchen')) return 'household_goods';
+  if (c.includes('furnit') || c.includes('chair') || c.includes('table') || c.includes('desk')) return 'furniture';
+  return 'furniture';
+}
+
 const CreateListingBodySchema = z.object({
   title: z.string().min(3).max(120),
   description: z.string().min(5).max(1000),
-  category: ItemCategoryEnum,
-  confirmedCondition: ItemConditionEnum,
+  category: z.string().transform(normalizeItemCategory).pipe(ItemCategoryEnum),
+  confirmedCondition: z.string().transform(normalizeItemCondition).pipe(ItemConditionEnum),
   materials: z.array(z.string()).default([]),
   photos: z.array(z.string()).default([]),
   isFree: z.boolean().default(true),
@@ -119,8 +139,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Create Listing API Error:', error);
+    let errorMessage = error?.message || 'Failed to create listing';
+    if (error instanceof z.ZodError) {
+      errorMessage = error.issues.map(i => `${i.path.join('.') || 'field'}: ${i.message}`).join(', ');
+    }
     return NextResponse.json(
-      { error: error?.message || 'Failed to create listing' },
+      { error: errorMessage },
       { status: 400 }
     );
   }

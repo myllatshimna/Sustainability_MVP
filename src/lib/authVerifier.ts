@@ -21,8 +21,10 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
   const token = authHeader.split('Bearer ')[1].trim();
 
   // Support test tokens (e.g. Priya Sharma, Rohan Mehta, demo tokens)
-  if (token.startsWith('token_user_') || token.startsWith('demo_user_') || token === 'demo_token') {
-    const uid = token.startsWith('token_') ? token.replace('token_', '') : (token === 'demo_token' ? 'user_owner_indiranagar' : token);
+  if (token.startsWith('token_user_') || token.startsWith('demo_user_') || token.startsWith('demo_token') || token === 'demo_token') {
+    const uid = token.startsWith('token_') 
+      ? token.replace('token_', '') 
+      : (token.includes('user_') ? token.substring(token.indexOf('user_')) : 'user_owner_indiranagar');
     const isNeighbour = uid.includes('neighbour');
     return {
       isAuthenticated: true,

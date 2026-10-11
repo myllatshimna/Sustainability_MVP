@@ -264,4 +264,36 @@ describe('Phase 5 & 6 — Real Community Reuse Listings, Reservation, & Handover
     expect(confirmRes.listing.recipientConfirmedAt).toBeDefined();
     expect(confirmRes.outcome.recipientConfirmedAt).toBeDefined();
   });
+
+  it('saves listings with condition minor_repair_needed and good_usable seamlessly', async () => {
+    const listing = await repository.saveListing({
+      id: 'list_test_cond_01',
+      ownerId: 'user_owner_indiranagar',
+      ownerDisplayName: 'Priya Sharma',
+      title: 'Ergonomic Desk Chair with Fabric Scratches',
+      description: 'Sturdy study chair with slight wear on upholstery.',
+      category: 'furniture',
+      confirmedCondition: 'minor_repair_needed',
+      materials: ['plastic', 'fabric'],
+      photos: [],
+      isFree: true,
+      currency: 'INR',
+      localityName: 'Indiranagar',
+      localityPlaceId: 'blr_indiranagar',
+      latitude: 12.9784,
+      longitude: 77.6408,
+      pickupPreference: 'Doorstep pickup in Indiranagar',
+      status: 'available',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isDemo: true
+    });
+
+    expect(listing.id).toBe('list_test_cond_01');
+    expect(listing.confirmedCondition).toBe('minor_repair_needed');
+    
+    const found = await repository.getListing('list_test_cond_01');
+    expect(found?.listing.confirmedCondition).toBe('minor_repair_needed');
+  });
 });
+

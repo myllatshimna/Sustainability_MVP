@@ -676,11 +676,9 @@ class RepositoryService {
 
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
-      if (this.demoListingRequests.size === 0) {
-        const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
-        for (const [k, v] of diskMap.entries()) {
-          this.demoListingRequests.set(k, v);
-        }
+      const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
+      for (const [k, v] of diskMap.entries()) {
+        this.demoListingRequests.set(k, v);
       }
       return Array.from(this.demoListingRequests.values()).filter(r => r.listingId === listingId);
     }
@@ -695,11 +693,9 @@ class RepositoryService {
   async getMySentRequests(userId: string): Promise<ListingRequest[]> {
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
-      if (this.demoListingRequests.size === 0) {
-        const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
-        for (const [k, v] of diskMap.entries()) {
-          this.demoListingRequests.set(k, v);
-        }
+      const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
+      for (const [k, v] of diskMap.entries()) {
+        this.demoListingRequests.set(k, v);
       }
       return Array.from(this.demoListingRequests.values()).filter(r => r.requesterId === userId);
     }
