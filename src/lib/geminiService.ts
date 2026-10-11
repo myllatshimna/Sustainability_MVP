@@ -30,6 +30,32 @@ export const GeminiRecommendationsResponseSchema = z.object({
 export type GeminiRecommendationsResponse = z.infer<typeof GeminiRecommendationsResponseSchema>;
 
 /**
+ * Initialize Google GenAI client:
+ * 1. Standard Vertex AI: when GOOGLE_CLOUD_PROJECT is set and GEMINI_API_KEY is omitted,
+ *    uses Application Default Credentials (ADC) on Vertex AI backend.
+ * 2. Gemini Developer API: when GEMINI_API_KEY is provided, uses direct API key.
+ */
+function getGoogleGenAIClient(config: ReturnType<typeof getAppConfig>): GoogleGenAI {
+  if (config.GEMINI_API_KEY) {
+    return new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
+  }
+
+  if (config.GOOGLE_CLOUD_PROJECT) {
+    return new GoogleGenAI({
+      vertexai: true,
+      project: config.GOOGLE_CLOUD_PROJECT,
+      location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
+    });
+  }
+
+  // Fallback to ADC on Vertex AI default
+  return new GoogleGenAI({
+    vertexai: true,
+    location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
+  });
+}
+
+/**
  * Assess item based on photo (base64) or text description using Gemini on Vertex AI.
  * In DEMO_MODE, returns high-fidelity deterministic responses.
  */
@@ -45,11 +71,9 @@ export async function analyzeItemWithGemini(params: {
     return getDeterministicDemoAssessment(params.description);
   }
 
-  // Live Mode: Use official @google/genai SDK
+  // Live Mode: Use official @google/genai SDK (Vertex AI ADC or Developer API)
   try {
-    const ai = new GoogleGenAI({
-      apiKey: config.GEMINI_API_KEY,
-    });
+    const ai = getGoogleGenAIClient(config);
 
     const prompt = `You are ReLoop AI, a sustainability assistant evaluating an unwanted item.
 CRITICAL SAFETY & EVIDENCE RULES:
@@ -133,9 +157,7 @@ export async function explainActionsWithGemini(params: {
   }
 
   try {
-    const ai = new GoogleGenAI({
-      apiKey: config.GEMINI_API_KEY,
-    });
+    const ai = getGoogleGenAIClient(config);
 
     const evidenceSummary = {
       organizations: params.eligibleOrganizations.map(o => ({

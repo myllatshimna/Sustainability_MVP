@@ -6,6 +6,7 @@ import { getAppConfig } from '@/lib/config';
 import crypto from 'crypto';
 
 const SaveOutcomeSchema = z.object({
+  id: z.string().optional(), // Optional caller-provided stable idempotency key
   assessmentId: z.string(),
   category: z.string(),
   action: z.enum(['repair', 'reuse', 'donate', 'recycle', 'dispose']),
@@ -31,7 +32,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = SaveOutcomeSchema.parse(body);
 
-    const outcomeId = `out_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+    // Idempotent Outcome Key: If caller supplied an ID or repeats submission for same assessment+action
+    // use stable outcome ID or caller ID to make repeated requests idempotent
+    const outcomeId = parsed.id || `out_${parsed.assessmentId}_${parsed.action}`;
+
+    // Transition of guest assessment ownership if guest assessment was anonymous
+    const existingAssessment = await repository.getAssessment(parsed.assessmentId);
+    if (existingAssessment && !existingAssessment.userId && authResult.userId) {
+      existingAssessment.userId = authResult.userId;
+      await repository.saveAssessment(existingAssessment);
+    }
+
     const outcome = {
       id: outcomeId,
       assessmentId: parsed.assessmentId,
@@ -44,7 +55,7 @@ export async function POST(req: NextRequest) {
       isDemo: config.DEMO_MODE
     };
 
-    // Save atomically via Outbox pattern in Firestore
+    // Save atomically via Outbox pattern in Firestore (or idempotent demo store)
     const result = await repository.saveOutcomeWithOutbox(outcome as any);
 
     return NextResponse.json({

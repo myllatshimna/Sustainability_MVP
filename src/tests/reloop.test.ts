@@ -1,8 +1,33 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { matchEligibleEvidence, validateEvidenceCitations } from '@/lib/matchingEngine';
 import { SEATTLE_ORGANIZATIONS, SEATTLE_LOCAL_RULES } from '@/data/curatedSeattle';
 import { validateImageUpload } from '@/lib/storageService';
-import { repository } from '@/lib/repository';
+import { repository, resetDemoStoreForTesting } from '@/lib/repository';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+// Test isolation: Create a dedicated temporary directory so tests never touch user demo records
+const TEST_STORE_DIR = path.join(os.tmpdir(), `reloop_test_store_${Date.now()}`);
+
+beforeAll(() => {
+  if (!fs.existsSync(TEST_STORE_DIR)) {
+    fs.mkdirSync(TEST_STORE_DIR, { recursive: true });
+  }
+  resetDemoStoreForTesting(TEST_STORE_DIR);
+});
+
+afterAll(() => {
+  try {
+    if (fs.existsSync(TEST_STORE_DIR)) {
+      fs.rmSync(TEST_STORE_DIR, { recursive: true, force: true });
+    }
+  } catch (e) {
+    // Ignore cleanup errors
+  }
+  // Restore default demo store path
+  resetDemoStoreForTesting(path.resolve(process.cwd(), '.reloop_demo_data'));
+});
 
 describe('Deterministic Matching Engine & Evidence Grounding', () => {
   it('correctly matches eligible repair organization for a repairable wooden chair in Seattle', () => {
@@ -83,7 +108,6 @@ describe('Citation Integrity & Anti-Hallucination Validator', () => {
 
 describe('Image Upload Validation', () => {
   it('accepts valid JPEG buffer under limit', () => {
-    // Valid JPEG magic number: 0xFF, 0xD8, 0xFF
     const validJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
     const validation = validateImageUpload(validJpeg, 'image/jpeg', 'chair.jpg');
     expect(validation.isValid).toBe(true);
@@ -108,12 +132,11 @@ describe('Image Upload Validation', () => {
 
 describe('Analytics Correctness & Outbox Integrity', () => {
   it('calculates community diversion strictly excluding disposal actions and labeling weight as self-reported', async () => {
+    // In empty isolated store, getCommunityMetrics uses the 5 sample outcomes (4 diverted + 1 disposal)
     const metrics = await repository.getCommunityMetrics(true);
 
     expect(metrics.totalCompletedActions).toBeGreaterThan(0);
-    // In sample demo dataset: 5 outcomes (4 diverted + 1 disposal of 35kg).
-    // Sum of diverted weights: 1.8 + 14.5 + 0.7 + 22.0 = 39.0 kg.
-    // Disposal (35 kg) MUST NOT be included.
+    // Sum of diverted weights: 1.8 + 14.5 + 0.7 + 22.0 = 39.0 kg (Disposal of 35 kg excluded)
     expect(metrics.divertedKgTotal).toBe(39.0);
     expect(metrics.actionsByType['dispose']).toBe(1);
     expect(metrics.isDemo).toBe(true);
@@ -136,6 +159,34 @@ describe('Analytics Correctness & Outbox Integrity', () => {
     expect(saved.event.eventId).toBe(`event_outcome_${outcome.id}`);
     expect(saved.event.outcomeId).toBe(outcome.id);
     expect(saved.event.publishStatus).toBe('pending');
+  });
+
+  it('handles repeated outcome-completion requests idempotently without inflating count', async () => {
+    const outcomePayload = {
+      id: 'out_idempotent_test_001',
+      assessmentId: 'as_idempotent_001',
+      userId: 'user_abc',
+      category: 'furniture',
+      action: 'repair' as const,
+      city: 'Seattle',
+      completedAt: '2026-10-11T14:00:00Z',
+      selfReportedWeightKg: 8.0,
+      isDemo: true
+    };
+
+    // First completion request
+    const firstSave = await repository.saveOutcomeWithOutbox(outcomePayload);
+    expect(firstSave.outcome.id).toBe('out_idempotent_test_001');
+
+    // Repeated identical completion request (e.g. network retry / duplicate click)
+    const secondSave = await repository.saveOutcomeWithOutbox(outcomePayload);
+    expect(secondSave.outcome.id).toBe('out_idempotent_test_001');
+    expect(secondSave.event.eventId).toBe(`event_outcome_out_idempotent_test_001`);
+
+    // Fetch user outcomes to verify no duplicate entry was created
+    const userOutcomes = await repository.getUserOutcomes('user_abc');
+    const matchingOutcomes = userOutcomes.filter(o => o.id === 'out_idempotent_test_001');
+    expect(matchingOutcomes).toHaveLength(1);
   });
 });
 

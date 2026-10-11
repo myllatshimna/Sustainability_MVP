@@ -13,15 +13,22 @@ import fs from 'fs';
 import path from 'path';
 
 // Persistent local demo storage file path (survives dev route isolation, fast-refresh, and server restarts)
-const DEMO_STORE_DIR = path.resolve(process.cwd(), '.reloop_demo_data');
-const DEMO_ASSESSMENTS_FILE = path.join(DEMO_STORE_DIR, 'assessments.json');
-const DEMO_OUTCOMES_FILE = path.join(DEMO_STORE_DIR, 'outcomes.json');
-const DEMO_EVENTS_FILE = path.join(DEMO_STORE_DIR, 'events.json');
+export function getDemoStoreDir(): string {
+  if (process.env.RELOOP_DEMO_STORE_DIR) {
+    return path.resolve(process.env.RELOOP_DEMO_STORE_DIR);
+  }
+  return path.resolve(process.cwd(), '.reloop_demo_data');
+}
+
+export function getDemoFilePath(filename: string): string {
+  return path.join(getDemoStoreDir(), filename);
+}
 
 function ensureDemoStoreDir() {
-  if (!fs.existsSync(DEMO_STORE_DIR)) {
+  const dir = getDemoStoreDir();
+  if (!fs.existsSync(dir)) {
     try {
-      fs.mkdirSync(DEMO_STORE_DIR, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true });
     } catch (e) {
       // Ignore if concurrent creation
     }
@@ -59,14 +66,23 @@ declare global {
   var __reloopDemoAnalyticsEvents: Map<string, AnalyticsEvent> | undefined;
 }
 
+export function resetDemoStoreForTesting(customDir?: string): void {
+  if (customDir) {
+    process.env.RELOOP_DEMO_STORE_DIR = customDir;
+  }
+  globalThis.__reloopDemoAssessments = readJsonFile<Assessment>(getDemoFilePath('assessments.json'));
+  globalThis.__reloopDemoOutcomes = readJsonFile<Outcome>(getDemoFilePath('outcomes.json'));
+  globalThis.__reloopDemoAnalyticsEvents = readJsonFile<AnalyticsEvent>(getDemoFilePath('events.json'));
+}
+
 if (!globalThis.__reloopDemoAssessments) {
-  globalThis.__reloopDemoAssessments = readJsonFile<Assessment>(DEMO_ASSESSMENTS_FILE);
+  globalThis.__reloopDemoAssessments = readJsonFile<Assessment>(getDemoFilePath('assessments.json'));
 }
 if (!globalThis.__reloopDemoOutcomes) {
-  globalThis.__reloopDemoOutcomes = readJsonFile<Outcome>(DEMO_OUTCOMES_FILE);
+  globalThis.__reloopDemoOutcomes = readJsonFile<Outcome>(getDemoFilePath('outcomes.json'));
 }
 if (!globalThis.__reloopDemoAnalyticsEvents) {
-  globalThis.__reloopDemoAnalyticsEvents = readJsonFile<AnalyticsEvent>(DEMO_EVENTS_FILE);
+  globalThis.__reloopDemoAnalyticsEvents = readJsonFile<AnalyticsEvent>(getDemoFilePath('events.json'));
 }
 
 /**
@@ -152,7 +168,7 @@ class RepositoryService {
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
       this.demoAssessments.set(assessment.id, assessment);
-      writeJsonFile(DEMO_ASSESSMENTS_FILE, this.demoAssessments);
+      writeJsonFile(getDemoFilePath('assessments.json'), this.demoAssessments);
       return;
     }
 
@@ -165,7 +181,7 @@ class RepositoryService {
       let assessment = this.demoAssessments.get(id);
       if (!assessment) {
         // Re-read file in case another worker process/route wrote it
-        const diskMap = readJsonFile<Assessment>(DEMO_ASSESSMENTS_FILE);
+        const diskMap = readJsonFile<Assessment>(getDemoFilePath('assessments.json'));
         assessment = diskMap.get(id);
         if (assessment) {
           this.demoAssessments.set(id, assessment);
@@ -220,8 +236,8 @@ class RepositoryService {
     if (config.DEMO_MODE || !this.firestore) {
       this.demoOutcomes.set(outcome.id, outcome);
       this.demoAnalyticsEvents.set(eventId, analyticsEvent);
-      writeJsonFile(DEMO_OUTCOMES_FILE, this.demoOutcomes);
-      writeJsonFile(DEMO_EVENTS_FILE, this.demoAnalyticsEvents);
+      writeJsonFile(getDemoFilePath('outcomes.json'), this.demoOutcomes);
+      writeJsonFile(getDemoFilePath('events.json'), this.demoAnalyticsEvents);
       return { outcome, event: analyticsEvent };
     }
 
@@ -241,7 +257,7 @@ class RepositoryService {
     const config = getAppConfig();
     if (config.DEMO_MODE || !this.firestore) {
       if (this.demoOutcomes.size === 0) {
-        const diskMap = readJsonFile<Outcome>(DEMO_OUTCOMES_FILE);
+        const diskMap = readJsonFile<Outcome>(getDemoFilePath('outcomes.json'));
         for (const [k, v] of diskMap.entries()) {
           this.demoOutcomes.set(k, v);
         }
