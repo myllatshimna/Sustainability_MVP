@@ -18,7 +18,7 @@ import LocalitySelector from './LocalitySelector';
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { user, signInWithGoogle, signOut, isDemoMode } = useAuth();
+  const { user, signInWithGoogle, switchAccount, signOut, isDemoMode } = useAuth();
 
   const navItems = [
     { name: 'Assess Item', href: '/assess', icon: Sparkles },
@@ -82,13 +82,18 @@ export default function Navbar() {
           <div className="flex items-center space-x-2 sm:space-x-3">
             <LocalitySelector compact={true} showRadius={false} />
             {user ? (
-              <div className="flex items-center space-x-3">
-                <span className="text-xs text-gray-700 font-medium hidden sm:inline">
-                  {user.displayName || user.email}
-                </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => switchAccount(user.uid.includes('owner') ? 'rohan' : 'priya')}
+                  title="Switch between Priya (Owner) and Rohan (Neighbour)"
+                  className="text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block"
+                >
+                  {user.displayName || user.email} ⇄
+                </button>
                 <button
                   onClick={signOut}
-                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-forest-800 bg-warm-200/60 hover:bg-warm-200 px-3 py-1.5 rounded-lg transition"
+                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-forest-800 bg-warm-200/60 hover:bg-warm-200 px-2.5 py-1.5 rounded-lg transition"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sign Out</span>

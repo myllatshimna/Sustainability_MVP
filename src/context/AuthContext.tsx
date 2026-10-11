@@ -12,7 +12,8 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (accountKey?: 'priya' | 'rohan') => Promise<void>;
+  switchAccount: (accountKey: 'priya' | 'rohan') => Promise<void>;
   signOut: () => Promise<void>;
   isDemoMode: boolean;
 }
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
   signInWithGoogle: async () => {},
+  switchAccount: async () => {},
   signOut: async () => {},
   isDemoMode: true
 });
@@ -50,18 +52,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const signInWithGoogle = async () => {
-    // In local demo environment or when Firebase client API keys are not filled, use simulated Google login
-    const demoUser: AuthUser = {
-      uid: 'demo_user_123',
-      email: 'alex.challenger@gmail.com',
-      displayName: 'Alex Rivers',
-      isDemo: true
-    };
+  const signInWithGoogle = async (accountKey: 'priya' | 'rohan' = 'priya') => {
+    const demoUser: AuthUser =
+      accountKey === 'rohan'
+        ? {
+            uid: 'user_neighbour_koramangala',
+            email: 'rohan.mehta@example.com',
+            displayName: 'Rohan Mehta (Neighbour)',
+            isDemo: true
+          }
+        : {
+            uid: 'user_owner_indiranagar',
+            email: 'priya.sharma@example.com',
+            displayName: 'Priya Sharma (Owner)',
+            isDemo: true
+          };
+
     setUser(demoUser);
-    setToken('demo_token');
+    const userToken = `token_${demoUser.uid}`;
+    setToken(userToken);
     localStorage.setItem('reloop_user', JSON.stringify(demoUser));
-    localStorage.setItem('reloop_token', 'demo_token');
+    localStorage.setItem('reloop_token', userToken);
+  };
+
+  const switchAccount = async (accountKey: 'priya' | 'rohan') => {
+    await signInWithGoogle(accountKey);
   };
 
   const signOut = async () => {
@@ -72,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, signInWithGoogle, signOut, isDemoMode }}>
+    <AuthContext.Provider value={{ user, token, signInWithGoogle, switchAccount, signOut, isDemoMode }}>
       {children}
     </AuthContext.Provider>
   );
