@@ -111,6 +111,66 @@ export const BENGALURU_ORGANIZATIONS: Organization[] = [
     sourceUrl: 'https://vidyaranya.org/donate-goods',
     verifiedAt: '2026-08-15',
     isDemo: false
+  },
+  {
+    id: 'org_blr_indiranagar_used_furniture_resale',
+    name: 'Indiranagar Secondhand Furniture & Refurbishing Market',
+    city: 'Bengaluru',
+    acceptedCategories: ['furniture'],
+    acceptedMaterials: ['wood', 'metal', 'fabric', 'plastic'],
+    conditionRequirements: ['new_with_tags', 'good_usable', 'minor_repair_needed'],
+    contactUrl: 'https://maps.google.com/?q=Used+Furniture+Dealers+Indiranagar+Bengaluru',
+    address: 'CMH Road & 100 Ft Rd Junction, Indiranagar, Bengaluru 560038',
+    latitude: 12.9785,
+    longitude: 77.6415,
+    sourceUrl: 'https://bbmp.gov.in/trade-license',
+    verifiedAt: '2026-09-20',
+    isDemo: false
+  },
+  {
+    id: 'org_blr_guarented_furniture_buyback',
+    name: 'Guarented Refurbished Furniture Buyback Hub',
+    city: 'Bengaluru',
+    acceptedCategories: ['furniture', 'household_goods'],
+    acceptedMaterials: ['wood', 'metal', 'fabric'],
+    conditionRequirements: ['good_usable', 'minor_repair_needed'],
+    contactUrl: 'https://guarented.com/sell',
+    address: 'Outer Ring Road, Near Koramangala 1st Block, Bengaluru 560034',
+    latitude: 12.9320,
+    longitude: 77.6310,
+    sourceUrl: 'https://guarented.com/sell',
+    verifiedAt: '2026-09-20',
+    isDemo: false
+  },
+  {
+    id: 'org_blr_cashify_buyback_indiranagar',
+    name: 'Cashify Electronics & Gadgets Buyback Center',
+    city: 'Bengaluru',
+    acceptedCategories: ['electronics'],
+    acceptedMaterials: ['electronics', 'metal', 'plastic'],
+    conditionRequirements: ['new_with_tags', 'good_usable', 'minor_repair_needed'],
+    contactUrl: 'https://www.cashify.in',
+    address: '100 Feet Road, HAL 2nd Stage, Indiranagar, Bengaluru 560038',
+    latitude: 12.9715,
+    longitude: 77.6410,
+    sourceUrl: 'https://www.cashify.in/stores/karnataka/bangalore/indiranagar',
+    verifiedAt: '2026-09-20',
+    isDemo: false
+  },
+  {
+    id: 'org_blr_indiranagar_scrap_salvage',
+    name: 'Indiranagar Scrap & Salvage Aggregator (Kabadiwala / Raddi)',
+    city: 'Bengaluru',
+    acceptedCategories: ['packaging', 'furniture', 'electronics', 'household_goods', 'books_paper'],
+    acceptedMaterials: ['metal', 'cardboard', 'rigid_plastic', 'paper', 'electronics'],
+    conditionRequirements: ['broken_scrap', 'heavily_damaged', 'minor_repair_needed'],
+    contactUrl: 'https://hasirudala.in/scrap-aggregators',
+    address: 'Old Madras Road, Near Swami Vivekananda Metro, Indiranagar, Bengaluru 560038',
+    latitude: 12.9850,
+    longitude: 77.6450,
+    sourceUrl: 'https://hasirudala.in/scrap-aggregators',
+    verifiedAt: '2026-09-20',
+    isDemo: false
   }
 ];
 
@@ -183,6 +243,17 @@ export const BENGALURU_LOCAL_RULES: LocalRule[] = [
       'E-Waste (Management) Rules 2022 & KSPCB: Electronic items, appliances, chargers, and cords must never be disposed of in wet or dry municipal bins. Hand over exclusively to authorized EPR recyclers, Saahas collection points, or KSPCB authorized e-waste dismantlers.',
     sourceUrl: 'https://kspcb.karnataka.gov.in/e-waste',
     verifiedAt: '2026-09-05',
+    isDemo: false
+  },
+  {
+    id: 'rule_blr_commercial_secondhand_resale',
+    city: 'Bengaluru',
+    category: 'furniture',
+    material: 'all',
+    instruction:
+      'Bengaluru Resale & Buyback Norms: Usable furniture, appliances, and electronics can be sold directly to licensed local secondhand dealers or commercial refurbishers for monetary return. Metal scrap components and bulky recyclable frames can be sold by weight (₹/kg) to authorized ward kabadiwalas/scrap aggregators.',
+    sourceUrl: 'https://bbmp.gov.in/trade-license',
+    verifiedAt: '2026-09-20',
     isDemo: false
   }
 ];

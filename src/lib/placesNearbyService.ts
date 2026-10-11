@@ -6,7 +6,7 @@ export interface NearbyServiceResult {
   id: string;
   name: string;
   serviceKind: 'verified' | 'discovered';
-  serviceType: 'repair' | 'donation' | 'recycling';
+  serviceType: 'repair' | 'donation' | 'recycling' | 'resale';
   address: string;
   distanceKm: number;
   latitude: number;
@@ -40,7 +40,7 @@ export async function searchNearbyCircularServices(params: {
   longitude: number;
   radiusKm: number;
   category: string;
-  serviceType?: 'repair' | 'donation' | 'recycling' | 'all';
+  serviceType?: 'repair' | 'donation' | 'recycling' | 'resale' | 'all';
 }): Promise<NearbyServicesResponse> {
   const { latitude, longitude, radiusKm, category, serviceType = 'all' } = params;
 
@@ -56,10 +56,13 @@ export async function searchNearbyCircularServices(params: {
           org.acceptedCategories.includes('all');
 
         if (acceptsCat) {
-          let determinedType: 'repair' | 'donation' | 'recycling' = 'donation';
-          if (org.name.toLowerCase().includes('repair') || org.conditionRequirements.includes('minor_repair_needed')) {
+          let determinedType: 'repair' | 'donation' | 'recycling' | 'resale' = 'donation';
+          const lowerName = org.name.toLowerCase();
+          if (lowerName.includes('resale') || lowerName.includes('buyback') || lowerName.includes('secondhand') || lowerName.includes('kabadiwala') || lowerName.includes('scrap')) {
+            determinedType = 'resale';
+          } else if (lowerName.includes('repair') || org.conditionRequirements.includes('minor_repair_needed')) {
             determinedType = 'repair';
-          } else if (org.name.toLowerCase().includes('waste') || org.name.toLowerCase().includes('dwcc')) {
+          } else if (lowerName.includes('waste') || lowerName.includes('dwcc')) {
             determinedType = 'recycling';
           }
 
@@ -193,13 +196,19 @@ function constructPlacesQuery(category: string, serviceType: string): string {
   if (serviceType === 'donation') {
     return 'charity donation center thrift store Bengaluru';
   }
+  if (serviceType === 'resale') {
+    if (normCat === 'furniture') return 'second hand furniture dealer used furniture buyback Bengaluru';
+    if (normCat === 'electronics') return 'used electronics buyback refurbisher cashify Bengaluru';
+    if (normCat === 'clothing') return 'thrift store vintage preloved clothes Bengaluru';
+    return 'second hand store buyback used goods dealer Bengaluru';
+  }
   if (serviceType === 'recycling') {
     if (normCat === 'electronics') return 'e-waste collection recycler Bengaluru';
     return 'scrap dealer kabadiwala dry waste recycling Bengaluru';
   }
   // All
-  if (normCat === 'furniture') return 'furniture repair OR furniture donation Bengaluru';
+  if (normCat === 'furniture') return 'furniture repair OR used furniture store OR furniture buyback Bengaluru';
   if (normCat === 'clothing') return 'tailor repair OR clothing donation Bengaluru';
   if (normCat === 'packaging') return 'dry waste collection OR scrap dealer Bengaluru';
-  return 'reuse repair donation recycling Bengaluru';
+  return 'reuse repair donation recycling resale Bengaluru';
 }

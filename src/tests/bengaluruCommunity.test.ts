@@ -125,6 +125,22 @@ describe('Phase 3 & 4 — Bengaluru Evidence Matching & Service Discovery', () =
     expect(firstVerified.isVerifiedMatch).toBe(true);
     expect(firstVerified.acceptanceNotice).toContain('Verified Acceptance');
   });
+
+  it('discovers local commercial secondhand resale and buyback vendors for furniture in Indiranagar', async () => {
+    const searchRes = await searchNearbyCircularServices({
+      latitude: 12.9784,
+      longitude: 77.6408, // Indiranagar
+      radiusKm: 5,
+      category: 'furniture',
+      serviceType: 'resale'
+    });
+
+    expect(searchRes.verifiedServices.length).toBeGreaterThan(0);
+    const resaleVendor = searchRes.verifiedServices.find(s => s.name.toLowerCase().includes('furniture') && s.name.toLowerCase().includes('secondhand'));
+    expect(resaleVendor).toBeDefined();
+    expect(resaleVendor?.serviceType).toBe('resale');
+    expect(resaleVendor?.distanceKm).toBeLessThanOrEqual(5);
+  });
 });
 
 describe('Phase 5 & 6 — Real Community Reuse Listings, Reservation, & Handover', () => {

@@ -28,6 +28,7 @@ export default function DirectoryPage() {
   const [localRules, setLocalRules] = useState<LocalRule[]>([]);
   const [discoveredServices, setDiscoveredServices] = useState<NearbyServiceResult[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedServiceType, setSelectedServiceType] = useState<'all' | 'resale' | 'repair' | 'donation' | 'recycling'>('all');
   const [activeTab, setActiveTab] = useState<'verified' | 'discovered'>('verified');
   const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -58,7 +59,7 @@ export default function DirectoryPage() {
       setLoadingDiscovered(true);
       setDiscoveredError(null);
       try {
-        const url = `/api/places/nearby?lat=${locality.latitude}&lng=${locality.longitude}&radius=${radiusKm}&category=${selectedCategory}`;
+        const url = `/api/places/nearby?lat=${locality.latitude}&lng=${locality.longitude}&radius=${radiusKm}&category=${selectedCategory}&serviceType=${selectedServiceType}`;
         const res = await fetch(url);
         const data = await res.json();
         if (res.ok) {
@@ -79,17 +80,57 @@ export default function DirectoryPage() {
     if (activeTab === 'discovered') {
       loadDiscoveredPlaces();
     }
-  }, [locality, radiusKm, selectedCategory, activeTab]);
+  }, [locality, radiusKm, selectedCategory, selectedServiceType, activeTab]);
 
   const filteredOrgs = organizations.filter((org) => {
-    if (selectedCategory === 'all') return true;
-    return org.acceptedCategories.includes(selectedCategory);
+    if (selectedCategory !== 'all' && !org.acceptedCategories.includes(selectedCategory)) {
+      return false;
+    }
+    if (selectedServiceType !== 'all') {
+      const lower = org.name.toLowerCase();
+      const isResale = lower.includes('resale') || lower.includes('buyback') || lower.includes('secondhand') || lower.includes('kabadiwala') || lower.includes('scrap');
+      const isRepair = lower.includes('repair') || org.conditionRequirements.includes('minor_repair_needed');
+      const isRecycling = lower.includes('waste') || lower.includes('dwcc');
+      const isDonation = !isResale && !isRepair && !isRecycling;
+
+      if (selectedServiceType === 'resale' && !isResale) return false;
+      if (selectedServiceType === 'repair' && !isRepair) return false;
+      if (selectedServiceType === 'recycling' && !isRecycling) return false;
+      if (selectedServiceType === 'donation' && !isDonation) return false;
+    }
+    return true;
   });
 
   const filteredRules = localRules.filter((rule) => {
     if (selectedCategory === 'all') return true;
     return rule.category === selectedCategory;
   });
+
+  const getOrgBadge = (org: Organization) => {
+    const lower = org.name.toLowerCase();
+    if (lower.includes('resale') || lower.includes('buyback') || lower.includes('secondhand') || lower.includes('kabadiwala') || lower.includes('scrap')) {
+      return {
+        label: '💰 Commercial Resale / Buyback',
+        className: 'bg-amber-100 text-amber-900 border border-amber-300'
+      };
+    }
+    if (lower.includes('repair') || org.conditionRequirements.includes('minor_repair_needed')) {
+      return {
+        label: '🔧 Repair Hub',
+        className: 'bg-blue-100 text-blue-900 border border-blue-200'
+      };
+    }
+    if (lower.includes('waste') || lower.includes('dwcc')) {
+      return {
+        label: '♻️ BBMP DWCC',
+        className: 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+      };
+    }
+    return {
+      label: '🤝 Verified Charity',
+      className: 'bg-forest-100 text-forest-900 border border-forest-200'
+    };
+  };
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -115,7 +156,7 @@ export default function DirectoryPage() {
       </div>
 
       {/* Category Filter Tabs */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+      <div className="flex items-center space-x-2 overflow-x-auto pb-1">
         <span className="text-xs font-semibold text-gray-500 uppercase mr-1">Category:</span>
         {['all', 'clothing', 'furniture', 'packaging', 'household_goods', 'electronics'].map(
           (cat) => (
@@ -132,6 +173,30 @@ export default function DirectoryPage() {
             </button>
           )
         )}
+      </div>
+
+      {/* Service Type Filter Tabs */}
+      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+        <span className="text-xs font-semibold text-gray-500 uppercase mr-1">Service Type:</span>
+        {[
+          { id: 'all', label: 'All Services' },
+          { id: 'resale', label: '💰 Sell / Buyback Shops' },
+          { id: 'repair', label: '🔧 Repair Workshops' },
+          { id: 'donation', label: '🤝 Non-Profit Donation' },
+          { id: 'recycling', label: '♻️ DWCC / Recyclers' },
+        ].map((type) => (
+          <button
+            key={type.id}
+            onClick={() => setSelectedServiceType(type.id as any)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap ${
+              selectedServiceType === type.id
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'bg-white text-gray-700 hover:bg-forest-50 border border-warm-200'
+            }`}
+          >
+            {type.label}
+          </button>
+        ))}
       </div>
 
       {/* Toggle between Verified Directory vs Google Places Discovery */}
@@ -198,9 +263,11 @@ export default function DirectoryPage() {
                     <h3 className="font-bold text-base text-gray-950">
                       {org.name.replace('[Demo] ', '')}
                     </h3>
-                    <span className="text-[10px] bg-forest-100 text-forest-900 px-2 py-0.5 rounded-full font-bold">
-                      Verified
-                    </span>
+                    <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${getOrgBadge(org).className}`}>
+                        {getOrgBadge(org).label}
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-xs text-gray-600 flex items-start space-x-1.5">

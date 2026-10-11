@@ -57,6 +57,20 @@ export function LocalityProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('Could not read locality preferences from localStorage:', e);
     }
+
+    const handleLocalityChanged = () => {
+      try {
+        const savedLocality = localStorage.getItem(LOCALITY_STORAGE_KEY);
+        if (savedLocality) {
+          setLocalityState(JSON.parse(savedLocality));
+        }
+      } catch (e) {
+        // Ignore
+      }
+    };
+
+    window.addEventListener('reloop_locality_changed', handleLocalityChanged);
+    return () => window.removeEventListener('reloop_locality_changed', handleLocalityChanged);
   }, []);
 
   const setLocality = (newLocality: BengaluruLocality) => {

@@ -324,26 +324,52 @@ function ResultsContent() {
             )}
           </div>
 
-          {/* Community Reuse CTA */}
-          <div className="bg-forest-900 text-white rounded-2xl p-5 shadow-sm space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* Two Monetization / Reuse Pathways */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 1. Community Peer-to-Peer Reuse CTA */}
+            <div className="bg-forest-900 text-white rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
               <div>
                 <span className="text-xs text-emerald-300 font-bold uppercase tracking-wider block">
                   Neighbourhood Reuse
                 </span>
-                <h4 className="text-base font-bold text-white">Offer to Bengaluru Community</h4>
-                <p className="text-xs text-forest-200 mt-0.5">
-                  Pre-fill this item into a real listing with Gemini to connect with nearby neighbours.
+                <h4 className="text-base font-bold text-white mt-0.5">Offer to Bengaluru Community</h4>
+                <p className="text-xs text-forest-200 mt-1 leading-relaxed">
+                  Pre-fill this item into a real listing with Gemini to sell or gift to nearby neighbours.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => router.push(`/listings/new?assessmentId=${assessment.id}`)}
-                className="bg-emerald-500 hover:bg-emerald-400 text-forest-950 font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-sm shrink-0 flex items-center justify-center space-x-1.5"
-              >
-                <span>Offer for Reuse</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/listings/new?assessmentId=${assessment.id}`)}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-forest-950 font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm flex items-center justify-center space-x-1.5"
+                >
+                  <span>Offer to Neighbours (P2P)</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Commercial Secondhand Resale & Buyback Vendors */}
+            <div className="bg-amber-950 text-amber-50 rounded-2xl p-5 shadow-sm space-y-3 flex flex-col justify-between border border-amber-900">
+              <div>
+                <span className="text-xs text-amber-300 font-bold uppercase tracking-wider block">
+                  Commercial Buyback
+                </span>
+                <h4 className="text-base font-bold text-white mt-0.5">Sell to Local Shops &amp; Vendors</h4>
+                <p className="text-xs text-amber-200 mt-1 leading-relaxed">
+                  Find nearby secondhand dealers, refurbishers, and scrap aggregators who buy items for instant cash or credit.
+                </p>
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/directory`)}
+                  className="w-full bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm flex items-center justify-center space-x-1.5"
+                >
+                  <span>💰 Find Local Resale Vendors</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 

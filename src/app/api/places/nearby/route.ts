@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const lngParam = searchParams.get('lng');
     const radiusParam = searchParams.get('radius');
     const category = searchParams.get('category') || 'all';
-    const serviceType = (searchParams.get('type') || 'all') as any;
+    const serviceType = (searchParams.get('serviceType') || searchParams.get('type') || 'all') as any;
 
     const latitude = latParam ? parseFloat(latParam) : DEFAULT_BENGALURU_LOCALITY.latitude;
     const longitude = lngParam ? parseFloat(lngParam) : DEFAULT_BENGALURU_LOCALITY.longitude;

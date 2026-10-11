@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { INITIAL_BENGALURU_LOCALITIES } from '@/data/bengaluruLocalities';
 
 interface AuthUser {
   uid: string;
@@ -73,6 +74,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(userToken);
     localStorage.setItem('reloop_user', JSON.stringify(demoUser));
     localStorage.setItem('reloop_token', userToken);
+
+    // Automatically sync active locality to user's home neighbourhood
+    const targetLocality = INITIAL_BENGALURU_LOCALITIES.find(
+      l => l.id === (accountKey === 'rohan' ? 'koramangala' : 'indiranagar')
+    );
+    if (targetLocality && typeof window !== 'undefined') {
+      localStorage.setItem('reloop_bengaluru_locality', JSON.stringify(targetLocality));
+      window.dispatchEvent(new Event('reloop_locality_changed'));
+    }
   };
 
   const switchAccount = async (accountKey: 'priya' | 'rohan') => {
