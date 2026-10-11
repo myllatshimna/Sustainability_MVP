@@ -11,8 +11,10 @@ import {
   BarChart3, 
   LogOut, 
   LogIn, 
+  Tag,
   RefreshCw 
 } from 'lucide-react';
+import LocalitySelector from './LocalitySelector';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -20,6 +22,7 @@ export default function Navbar() {
 
   const navItems = [
     { name: 'Assess Item', href: '/assess', icon: Sparkles },
+    { name: 'Community Reuse', href: '/listings', icon: Tag },
     { name: 'Directory & Map', href: '/directory', icon: MapPin },
     { name: 'My Outcomes', href: '/outcomes', icon: CheckCircle2 },
     { name: 'Community Impact', href: '/community', icon: BarChart3 },
@@ -32,9 +35,9 @@ export default function Navbar() {
         <div className="bg-amber-100/90 border-b border-amber-200 text-amber-900 text-xs px-4 py-1.5 flex items-center justify-between font-medium">
           <div className="flex items-center space-x-2">
             <span className="inline-block w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
-            <span>Demo Mode — Sample Data (Seattle Pilot City)</span>
+            <span>Demo Mode — Sample Data (Bengaluru Pilot City)</span>
           </div>
-          <span className="text-amber-800 text-[11px] hidden sm:inline">Vertex AI & BigQuery Live Mode Ready</span>
+          <span className="text-amber-800 text-[11px] hidden sm:inline">Vertex AI & Places Live Mode Ready</span>
         </div>
       )}
 
@@ -75,8 +78,9 @@ export default function Navbar() {
             })}
           </nav>
 
-          {/* User Sign-In / Status */}
-          <div className="flex items-center space-x-3">
+          {/* Locality Selector Pill & User Sign-In */}
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <LocalitySelector compact={true} showRadius={false} />
             {user ? (
               <div className="flex items-center space-x-3">
                 <span className="text-xs text-gray-700 font-medium hidden sm:inline">

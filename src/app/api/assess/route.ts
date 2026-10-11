@@ -11,7 +11,12 @@ export async function POST(req: NextRequest) {
     const config = getAppConfig();
     const contentType = req.headers.get('content-type') || '';
 
-    let city = 'Seattle';
+    let city = 'Bengaluru';
+    let locality: string | undefined;
+    let localityPlaceId: string | undefined;
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+    let radiusKm: number | undefined;
     let userDescription = '';
     let imageBase64: string | undefined;
     let mimeType: string | undefined;
@@ -19,7 +24,12 @@ export async function POST(req: NextRequest) {
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
-      city = (formData.get('city') as string) || 'Seattle';
+      city = (formData.get('city') as string) || 'Bengaluru';
+      locality = (formData.get('locality') as string) || undefined;
+      localityPlaceId = (formData.get('placeId') as string) || undefined;
+      if (formData.get('latitude')) latitude = parseFloat(formData.get('latitude') as string);
+      if (formData.get('longitude')) longitude = parseFloat(formData.get('longitude') as string);
+      if (formData.get('radiusKm')) radiusKm = parseFloat(formData.get('radiusKm') as string);
       userDescription = (formData.get('description') as string) || '';
       const file = formData.get('photo') as File | null;
 
@@ -45,7 +55,12 @@ export async function POST(req: NextRequest) {
       }
     } else {
       const body = await req.json();
-      city = body.city || 'Seattle';
+      city = body.city || 'Bengaluru';
+      locality = body.locality;
+      localityPlaceId = body.placeId;
+      latitude = body.latitude;
+      longitude = body.longitude;
+      radiusKm = body.radiusKm;
       userDescription = body.description || '';
       imageBase64 = body.imageBase64;
       mimeType = body.mimeType;
@@ -70,6 +85,11 @@ export async function POST(req: NextRequest) {
     const assessment = {
       id: assessmentId,
       city,
+      locality,
+      localityPlaceId,
+      latitude,
+      longitude,
+      radiusKm,
       imageObjectPath,
       userDescription,
       observedAttributes: {

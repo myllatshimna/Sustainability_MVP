@@ -41,7 +41,7 @@ export function getAppConfig(): AppConfig {
     DEMO_MODE: process.env.DEMO_MODE ?? 'true',
     GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
     GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    GEMINI_MODEL_ID: process.env.GEMINI_MODEL_ID || 'gemini-1.5-flash',
+    GEMINI_MODEL_ID: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GCS_BUCKET_NAME: process.env.GCS_BUCKET_NAME,
     PUBSUB_TOPIC_NAME: process.env.PUBSUB_TOPIC_NAME || 'reloop-outcomes-topic',
@@ -58,7 +58,7 @@ export function getAppConfig(): AppConfig {
     console.warn('Environment configuration warning:', parsed.error.format());
     return {
       DEMO_MODE: true,
-      GEMINI_MODEL_ID: 'gemini-1.5-flash',
+      GEMINI_MODEL_ID: 'gemini-2.5-flash',
       PUBSUB_TOPIC_NAME: 'reloop-outcomes-topic',
       BIGQUERY_DATASET: 'reloop_analytics',
       BIGQUERY_TABLE: 'outcome_events',

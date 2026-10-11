@@ -318,6 +318,29 @@ function ResultsContent() {
             )}
           </div>
 
+          {/* Community Reuse CTA */}
+          <div className="bg-forest-900 text-white rounded-2xl p-5 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <span className="text-xs text-emerald-300 font-bold uppercase tracking-wider block">
+                  Neighbourhood Reuse
+                </span>
+                <h4 className="text-base font-bold text-white">Offer to Bengaluru Community</h4>
+                <p className="text-xs text-forest-200 mt-0.5">
+                  Pre-fill this item into a real listing with Gemini to connect with nearby neighbours.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(`/listings/new?assessmentId=${assessment.id}`)}
+                className="bg-emerald-500 hover:bg-emerald-400 text-forest-950 font-bold text-xs px-5 py-2.5 rounded-xl transition shadow-sm shrink-0 flex items-center justify-center space-x-1.5"
+              >
+                <span>Offer for Reuse</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
           {/* Record Completed Action Card */}
           <div className="pt-6 border-t border-warm-200 space-y-4">
             <div>

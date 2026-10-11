@@ -133,15 +133,21 @@ export default function OutcomesPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center space-x-4 text-xs text-gray-500">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                     <span className="flex items-center space-x-1">
                       <MapPin className="w-3.5 h-3.5 text-forest-700" />
-                      <span>{out.city}</span>
+                      <span>{out.locality ? `${out.locality}, ${out.city}` : out.city}</span>
                     </span>
                     <span className="flex items-center space-x-1">
                       <Clock className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{new Date(out.completedAt).toLocaleDateString()}</span>
+                      <span>{new Date(out.completedAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
                     </span>
+                    {out.recipientConfirmedAt && (
+                      <span className="inline-flex items-center space-x-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>Recipient Confirmed</span>
+                      </span>
+                    )}
                   </div>
                 </div>
 

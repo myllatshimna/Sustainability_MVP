@@ -411,9 +411,95 @@ function getDeterministicDemoRecommendations(params: {
       rank: 1,
       eligibleOrgIds: [],
       eligibleRuleIds: [],
-      verificationGuidance: 'Consult Seattle Public Utilities Where Does It Go directory for custom sorting.'
+      verificationGuidance: 'Verified local guidance unavailable. Contact local municipal waste helpline.'
     });
   }
 
   return { recommendations };
+}
+
+/**
+ * Drafts community reuse listing title, description, and suggested pricing (in INR ₹)
+ * using Gemini on Vertex AI based on assessment attributes and locality.
+ */
+export async function draftListingWithGemini(params: {
+  category: string;
+  materials: string[];
+  condition: string;
+  userDescription: string;
+  localityName: string;
+}): Promise<{
+  title: string;
+  description: string;
+  isFree: boolean;
+  suggestedPriceInr?: number;
+  pickupPreference: string;
+}> {
+  const config = getAppConfig();
+
+  if (config.DEMO_MODE) {
+    const isFree = params.condition.includes('repair') || params.category === 'packaging';
+    const suggestedPrice = isFree ? undefined : params.category === 'furniture' ? 800 : 250;
+    return {
+      title: `${params.category === 'furniture' ? 'Wooden Chair' : params.category === 'clothing' ? 'Clean Winter Jacket' : 'Cardboard Shipping Boxes'} — ${params.localityName}`,
+      description: `${params.userDescription || 'Gently used item in good condition.'} User-confirmed materials: ${params.materials.join(', ') || 'Standard'}. Condition: ${params.condition.replace(/_/g, ' ')}. Ready for doorstep pickup in ${params.localityName}, Bengaluru.`,
+      isFree,
+      suggestedPriceInr: suggestedPrice,
+      pickupPreference: `Pickup near ${params.localityName}, Bengaluru`
+    };
+  }
+
+  try {
+    const ai = getGoogleGenAIClient(config);
+    const prompt = `You are ReLoop Bengaluru AI assistant helping a community member draft an honest, accurate reuse listing.
+Category: ${params.category}
+Materials: ${params.materials.join(', ')}
+Condition: ${params.condition}
+User Notes: ${params.userDescription}
+Locality: ${params.localityName}, Bengaluru (India)
+
+Generate a JSON object with:
+1. title: Concise, friendly title under 60 chars ending with "(${params.localityName})"
+2. description: Accurate, transparent 2-3 sentence description emphasizing condition and materials.
+3. isFree: boolean (true if minor damage or packaging, or user offered for free)
+4. suggestedPriceInr: integer in INR (between 100 and 2000, or null if isFree is true)
+5. pickupPreference: String proposing pickup in ${params.localityName}, Bengaluru.`;
+
+    const response = await ai.models.generateContent({
+      model: config.GEMINI_MODEL_ID,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            isFree: { type: Type.BOOLEAN },
+            suggestedPriceInr: { type: Type.INTEGER },
+            pickupPreference: { type: Type.STRING }
+          },
+          required: ['title', 'description', 'isFree', 'pickupPreference']
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    return {
+      title: parsed.title || `Item for reuse in ${params.localityName}`,
+      description: parsed.description || params.userDescription || 'Available for community reuse.',
+      isFree: Boolean(parsed.isFree),
+      suggestedPriceInr: parsed.isFree ? undefined : (parsed.suggestedPriceInr || 200),
+      pickupPreference: parsed.pickupPreference || `Pickup in ${params.localityName}, Bengaluru`
+    };
+  } catch (error: any) {
+    console.error('Gemini Draft Listing Error:', error);
+    // Graceful structured fallback
+    return {
+      title: `${params.category.charAt(0).toUpperCase() + params.category.slice(1)} (${params.localityName})`,
+      description: `${params.userDescription || 'Available for community reuse.'} Confirmed condition: ${params.condition.replace(/_/g, ' ')}.`,
+      isFree: true,
+      pickupPreference: `Pickup in ${params.localityName}, Bengaluru`
+    };
+  }
 }

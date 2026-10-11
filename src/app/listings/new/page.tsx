@@ -1,0 +1,402 @@
+'use client';
+
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { 
+  Sparkles, 
+  Tag, 
+  MapPin, 
+  Camera, 
+  Loader2, 
+  AlertCircle, 
+  CheckCircle2, 
+  ArrowLeft 
+} from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { useLocality } from '@/context/LocalityContext';
+import LocalitySelector from '@/components/LocalitySelector';
+
+function CreateListingContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const assessmentIdParam = searchParams.get('assessmentId');
+
+  const { user, token } = useAuth();
+  const { locality } = useLocality();
+
+  // Form State
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<'furniture' | 'clothing' | 'packaging'>('furniture');
+  const [condition, setCondition] = useState<string>('good_usable');
+  const [materials, setMaterials] = useState<string[]>(['wood']);
+  const [isFree, setIsFree] = useState(true);
+  const [priceInr, setPriceInr] = useState<string>('');
+  const [pickupPreference, setPickupPreference] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // States
+  const [isDrafting, setIsDrafting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Prepopulate from active assessment if available
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('current_assessment');
+      if (raw) {
+        const assessment = JSON.parse(raw);
+        if (['furniture', 'clothing', 'packaging'].includes(assessment.observedAttributes.category)) {
+          setCategory(assessment.observedAttributes.category);
+        }
+        setCondition(assessment.confirmedAttributes?.condition || assessment.observedAttributes.condition || 'good_usable');
+        setMaterials(assessment.confirmedAttributes?.materials || assessment.observedAttributes.materials || []);
+        setDescription(assessment.userDescription || '');
+        setPickupPreference(`Doorstep pickup in ${locality.name}, Bengaluru`);
+
+        // Trigger Gemini Draft
+        handleDraftWithGemini({
+          category: assessment.observedAttributes.category,
+          materials: assessment.observedAttributes.materials,
+          condition: assessment.confirmedAttributes?.condition || assessment.observedAttributes.condition,
+          userDescription: assessment.userDescription,
+          localityName: locality.name
+        });
+      }
+    } catch (e) {
+      console.warn('Could not prepopulate from session assessment:', e);
+    }
+  }, [assessmentIdParam]);
+
+  const handleDraftWithGemini = async (customParams?: any) => {
+    setIsDrafting(true);
+    setError(null);
+    try {
+      const payload = customParams || {
+        category,
+        materials,
+        condition,
+        userDescription: description,
+        localityName: locality.name
+      };
+
+      const res = await fetch('/api/listings/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const draft = await res.json();
+      if (res.ok) {
+        setTitle(draft.title || '');
+        setDescription(draft.description || '');
+        setIsFree(draft.isFree);
+        if (!draft.isFree && draft.suggestedPriceInr) {
+          setPriceInr(String(draft.suggestedPriceInr));
+        }
+        setPickupPreference(draft.pickupPreference || `Pickup in ${locality.name}, Bengaluru`);
+      }
+    } catch (e: any) {
+      console.warn('Gemini drafting error:', e);
+    } finally {
+      setIsDrafting(false);
+    }
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !description.trim()) {
+      setError('Please provide a listing title and description.');
+      return;
+    }
+
+    if (!user) {
+      setError('Please sign in before posting a community listing.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const parsedPrice = !isFree && priceInr ? parseFloat(priceInr) : undefined;
+      const res = await fetch('/api/listings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || 'demo_token'}`
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          confirmedCondition: condition,
+          materials,
+          photos: photoPreview ? [photoPreview] : [],
+          isFree,
+          priceInr: parsedPrice,
+          localityName: locality.name,
+          localityPlaceId: locality.placeId,
+          latitude: locality.latitude,
+          longitude: locality.longitude,
+          pickupPreference: pickupPreference.trim() || `Pickup in ${locality.name}, Bengaluru`
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to post listing');
+      }
+
+      router.push(`/listings/${data.listingId}`);
+    } catch (err: any) {
+      setError(err.message || 'Error publishing listing');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex items-center space-x-3">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="p-2 rounded-xl border border-warm-200 bg-white hover:bg-warm-100 text-gray-600 transition"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div>
+          <h1 className="text-2xl font-extrabold text-forest-950">Offer Item for Community Reuse</h1>
+          <p className="text-xs text-gray-500">
+            Publish an item for neighbours in {locality.name}, Bengaluru.
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-center space-x-2 text-xs">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Gemini AI Assist Banner */}
+      <div className="bg-forest-900 text-white rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-4 h-4 text-emerald-300" />
+            <span className="font-bold text-sm">Gemini Listing Assistant</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleDraftWithGemini()}
+            disabled={isDrafting}
+            className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+          >
+            {isDrafting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            <span>Draft with Gemini</span>
+          </button>
+        </div>
+        <p className="text-xs text-forest-200">
+          Gemini drafts an honest title and description using your confirmed condition and materials. You review and approve before posting.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-3xl border border-warm-200 shadow-2xs space-y-6">
+        {/* Locality Confirmation */}
+        <div className="space-y-2">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+            Pickup Locality (Bengaluru)
+          </label>
+          <LocalitySelector showRadius={false} />
+          <p className="text-[11px] text-gray-400">
+            Neighbours within your search radius can discover and request this item.
+          </p>
+        </div>
+
+        {/* Category & Condition */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as any)}
+              className="w-full bg-warm-50 border border-warm-200 rounded-xl px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-forest-600"
+            >
+              <option value="furniture">Furniture</option>
+              <option value="clothing">Clothing &amp; Textiles</option>
+              <option value="packaging">Packaging &amp; Cardboard</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Condition</label>
+            <select
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              className="w-full bg-warm-50 border border-warm-200 rounded-xl px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-forest-600"
+            >
+              <option value="new_with_tags">New / Unused</option>
+              <option value="good_usable">Good Usable</option>
+              <option value="minor_repair_needed">Minor Repair Needed</option>
+              <option value="heavily_damaged">Heavily Damaged (Salvage)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Listing Title</label>
+          <input
+            type="text"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Solid Teak Study Chair (Indiranagar)"
+            className="w-full bg-warm-50 border border-warm-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-gray-900 focus:ring-1 focus:ring-forest-600"
+          />
+        </div>
+
+        {/* Description */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Description &amp; Condition Details</label>
+          <textarea
+            required
+            rows={4}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe the item's condition, exact dimensions, or minor flaws openly..."
+            className="w-full bg-warm-50 border border-warm-200 rounded-xl p-3 text-xs text-gray-800 focus:ring-1 focus:ring-forest-600"
+          />
+        </div>
+
+        {/* Free or For Sale in INR ₹ */}
+        <div className="p-4 bg-warm-50/70 rounded-2xl border border-warm-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-gray-800">Giveaway or Sale?</span>
+              <p className="text-[11px] text-gray-500">Free items usually find neighbours within hours.</p>
+            </div>
+            <div className="flex items-center space-x-1 bg-white p-1 rounded-xl border border-warm-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setIsFree(true)}
+                className={`px-3 py-1 rounded-lg transition ${
+                  isFree ? 'bg-forest-700 text-white' : 'text-gray-600'
+                }`}
+              >
+                Free
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFree(false)}
+                className={`px-3 py-1 rounded-lg transition ${
+                  !isFree ? 'bg-forest-700 text-white' : 'text-gray-600'
+                }`}
+              >
+                Set Price (₹)
+              </button>
+            </div>
+          </div>
+
+          {!isFree && (
+            <div className="space-y-1.5 pt-2 border-t border-warm-200">
+              <label className="block text-xs font-semibold text-gray-700">Price in Indian Rupees (₹)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-500">₹</span>
+                <input
+                  type="number"
+                  min="10"
+                  step="10"
+                  required={!isFree}
+                  value={priceInr}
+                  onChange={(e) => setPriceInr(e.target.value)}
+                  placeholder="e.g. 500"
+                  className="w-full pl-7 pr-3 py-2 text-xs bg-white border border-warm-200 rounded-xl font-bold text-gray-900 focus:ring-1 focus:ring-forest-600"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pickup Preference */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Pickup Preference</label>
+          <input
+            type="text"
+            value={pickupPreference}
+            onChange={(e) => setPickupPreference(e.target.value)}
+            placeholder="e.g. Doorstep pickup near 12th Main Indiranagar on weekend afternoons"
+            className="w-full bg-warm-50 border border-warm-200 rounded-xl px-3.5 py-2 text-xs text-gray-900 focus:ring-1 focus:ring-forest-600"
+          />
+          <p className="text-[11px] text-gray-400">
+            Exact address and phone number remain private and are only shared with the member whose request you accept.
+          </p>
+        </div>
+
+        {/* Optional Photo */}
+        <div className="space-y-2">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Item Photo (Optional)</label>
+          {photoPreview ? (
+            <div className="space-y-2">
+              <img src={photoPreview} alt="Preview" className="h-40 rounded-xl object-contain bg-warm-50 p-2 border border-warm-200" />
+              <button
+                type="button"
+                onClick={() => setPhotoPreview(null)}
+                className="text-xs text-red-600 hover:underline"
+              >
+                Remove photo
+              </button>
+            </div>
+          ) : (
+            <label className="border-2 border-dashed border-warm-200 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-forest-500 transition">
+              <Camera className="w-6 h-6 text-forest-700 mb-1" />
+              <span className="text-xs font-semibold text-forest-800">Add a photo</span>
+              <span className="text-[11px] text-gray-400">JPEG, PNG or WebP</span>
+              <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+            </label>
+          )}
+        </div>
+
+        {/* Submit */}
+        <div className="pt-4 border-t border-warm-100 flex items-center justify-end space-x-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="px-5 py-2.5 rounded-xl border border-warm-300 text-xs font-semibold text-gray-700 hover:bg-warm-100 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex items-center space-x-2 bg-forest-700 hover:bg-forest-800 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition shadow-sm"
+          >
+            {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            <span>Review &amp; Publish Listing</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export default function CreateListingPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-xs text-gray-500">Loading form...</div>}>
+      <CreateListingContent />
+    </Suspense>
+  );
+}

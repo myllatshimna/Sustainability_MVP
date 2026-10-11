@@ -21,17 +21,17 @@ export default function HomePage() {
       <section className="text-center max-w-3xl mx-auto space-y-6 pt-6">
         <div className="inline-flex items-center space-x-2 bg-forest-100 text-forest-800 text-xs font-semibold px-3 py-1.5 rounded-full border border-forest-200">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Seattle Circular Economy Pilot</span>
+          <span>Bengaluru Circular Economy Pilot (Karnataka, India)</span>
         </div>
 
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-forest-950 leading-tight">
-          Give every unwanted item a second life.
+          Give every unwanted item a second life in Bengaluru.
         </h1>
 
         <p className="text-lg text-gray-700 leading-relaxed font-normal">
           Combine photo assessment powered by <strong>Gemini on Vertex AI</strong> with{' '}
-          <strong>verified local municipal rules</strong> and <strong>curated non-profit directories</strong>. 
-          Repair, reuse, donate, recycle, or correctly dispose — then track real diversion impact.
+          <strong>BBMP waste segregation rules</strong>, <strong>local DWCC recycling hubs</strong>, and{' '}
+          <strong>real neighbourhood community reuse listings</strong>.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
@@ -45,11 +45,11 @@ export default function HomePage() {
           </Link>
 
           <Link
-            href="/directory"
+            href="/listings"
             className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-white hover:bg-forest-50/80 text-forest-900 border border-warm-300 font-semibold px-6 py-3.5 rounded-xl transition"
           >
-            <MapPin className="w-4 h-4 text-forest-700" />
-            <span>Explore Pilot Directory</span>
+            <Recycle className="w-4 h-4 text-forest-700" />
+            <span>Browse Community Reuse</span>
           </Link>
         </div>
       </section>
@@ -122,7 +122,7 @@ export default function HomePage() {
             <div className="w-7 h-7 rounded-full bg-forest-600 text-white flex items-center justify-center text-xs font-bold">3</div>
             <h3 className="font-semibold text-sm text-white">Verified Matching</h3>
             <p className="text-xs text-forest-200">
-              Matches Ballard Tool Library Fixers Collective &amp; Seattle Public Utilities bulky rules.
+              Matches Repair Café Bengaluru, Hasiru Dala DWCC, and BBMP bulky waste protocols.
             </p>
           </div>
 

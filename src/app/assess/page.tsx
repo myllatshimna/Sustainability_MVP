@@ -14,14 +14,16 @@ import {
   ArrowRight,
   Info
 } from 'lucide-react';
-import { PILOT_CITY } from '@/data/curatedSeattle';
+import LocalitySelector from '@/components/LocalitySelector';
+import { useLocality } from '@/context/LocalityContext';
 
 function AssessmentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sampleParam = searchParams.get('sample');
+  const { locality, radiusKm } = useLocality();
 
-  const [city, setCity] = useState(PILOT_CITY);
+  const [city, setCity] = useState('Bengaluru');
   const [description, setDescription] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -72,7 +74,12 @@ function AssessmentContent() {
 
     try {
       const formData = new FormData();
-      formData.append('city', city);
+      formData.append('city', 'Bengaluru');
+      formData.append('locality', locality.name);
+      formData.append('placeId', locality.placeId);
+      formData.append('latitude', String(locality.latitude));
+      formData.append('longitude', String(locality.longitude));
+      formData.append('radiusKm', String(radiusKm));
       formData.append('description', description);
       if (selectedFile) {
         formData.append('photo', selectedFile);
@@ -192,23 +199,14 @@ function AssessmentContent() {
 
       {step === 'input' && (
         <form onSubmit={handleInitialAssessment} className="space-y-6">
-          {/* City Selection */}
-          <div className="bg-white p-5 rounded-2xl border border-warm-200 shadow-2xs space-y-2">
+          {/* Bengaluru Locality Selection */}
+          <div className="bg-white p-5 rounded-2xl border border-warm-200 shadow-2xs space-y-3">
             <label className="block text-sm font-semibold text-gray-800">
-              Pilot City Location
+              Pilot Locality (Bengaluru, Karnataka)
             </label>
-            <div className="flex items-center space-x-2">
-              <MapPin className="w-4 h-4 text-forest-700" />
-              <select
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full bg-warm-50 border border-warm-300 rounded-xl px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-forest-600"
-              >
-                <option value="Seattle">Seattle, WA (Curated Active Pilot)</option>
-              </select>
-            </div>
+            <LocalitySelector showRadius={true} />
             <p className="text-xs text-gray-500">
-              Uses official Seattle Public Utilities disposal rules &amp; King County non-profit directory.
+              Matches nearby verified repairers, donation centers, and DWCC recycling within your selected radius.
             </p>
           </div>
 

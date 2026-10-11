@@ -34,17 +34,20 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
 
   try {
     if (!getApps().length) {
-      if (process.env.FIREBASE_PROJECT_ID) {
-        initializeApp({
-          projectId: process.env.FIREBASE_PROJECT_ID
-        });
+      const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+      if (projectId) {
+        initializeApp({ projectId });
       } else {
-        // Fallback for local demo environment without GCP project
-        return {
-          isAuthenticated: true,
-          userId: 'demo_guest_user',
-          isDemoUser: true
-        };
+        if (config.DEMO_MODE) {
+          return {
+            isAuthenticated: true,
+            userId: 'demo_guest_user',
+            isDemoUser: true
+          };
+        }
+        // In live mode, unconfigured Firebase authentication must fail explicitly
+        console.error('Firebase Auth Error: Missing FIREBASE_PROJECT_ID in live mode.');
+        return { isAuthenticated: false };
       }
     }
 

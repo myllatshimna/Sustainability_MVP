@@ -6,9 +6,20 @@ import {
   Outcome,
   AnalyticsEvent,
   Organization,
-  LocalRule
+  LocalRule,
+  Listing,
+  PublicListing,
+  ListingRequest,
+  ListingStatus
 } from '@/types/models';
+import { calculateHaversineDistanceKm, isBengaluruCity } from '@/data/bengaluruLocalities';
 import { DEMO_ORGANIZATIONS, DEMO_LOCAL_RULES, SEATTLE_ORGANIZATIONS, SEATTLE_LOCAL_RULES } from '@/data/curatedSeattle';
+import {
+  BENGALURU_ORGANIZATIONS,
+  BENGALURU_LOCAL_RULES,
+  DEMO_BENGALURU_ORGANIZATIONS,
+  DEMO_BENGALURU_LOCAL_RULES
+} from '@/data/bengaluruCurated';
 import fs from 'fs';
 import path from 'path';
 
@@ -64,6 +75,8 @@ declare global {
   var __reloopDemoAssessments: Map<string, Assessment> | undefined;
   var __reloopDemoOutcomes: Map<string, Outcome> | undefined;
   var __reloopDemoAnalyticsEvents: Map<string, AnalyticsEvent> | undefined;
+  var __reloopDemoListings: Map<string, Listing> | undefined;
+  var __reloopDemoListingRequests: Map<string, ListingRequest> | undefined;
 }
 
 export function resetDemoStoreForTesting(customDir?: string): void {
@@ -73,6 +86,8 @@ export function resetDemoStoreForTesting(customDir?: string): void {
   globalThis.__reloopDemoAssessments = readJsonFile<Assessment>(getDemoFilePath('assessments.json'));
   globalThis.__reloopDemoOutcomes = readJsonFile<Outcome>(getDemoFilePath('outcomes.json'));
   globalThis.__reloopDemoAnalyticsEvents = readJsonFile<AnalyticsEvent>(getDemoFilePath('events.json'));
+  globalThis.__reloopDemoListings = readJsonFile<Listing>(getDemoFilePath('listings.json'));
+  globalThis.__reloopDemoListingRequests = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
 }
 
 if (!globalThis.__reloopDemoAssessments) {
@@ -83,6 +98,12 @@ if (!globalThis.__reloopDemoOutcomes) {
 }
 if (!globalThis.__reloopDemoAnalyticsEvents) {
   globalThis.__reloopDemoAnalyticsEvents = readJsonFile<AnalyticsEvent>(getDemoFilePath('events.json'));
+}
+if (!globalThis.__reloopDemoListings) {
+  globalThis.__reloopDemoListings = readJsonFile<Listing>(getDemoFilePath('listings.json'));
+}
+if (!globalThis.__reloopDemoListingRequests) {
+  globalThis.__reloopDemoListingRequests = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
 }
 
 /**
@@ -115,51 +136,74 @@ class RepositoryService {
     return globalThis.__reloopDemoAnalyticsEvents!;
   }
 
+  private get demoListings(): Map<string, Listing> {
+    return globalThis.__reloopDemoListings!;
+  }
+
+  private get demoListingRequests(): Map<string, ListingRequest> {
+    return globalThis.__reloopDemoListingRequests!;
+  }
+
   // --- Directory & Local Rules ---
   async getOrganizations(city?: string): Promise<Organization[]> {
     const config = getAppConfig();
+    const isBlr = !city || isBengaluruCity(city);
+    const isSea = city && city.trim().toLowerCase() === 'seattle';
+
     if (config.DEMO_MODE || !this.firestore) {
-      const orgs = DEMO_ORGANIZATIONS;
-      return city ? orgs.filter(o => o.city.toLowerCase() === city.toLowerCase()) : orgs;
+      if (isBlr) return DEMO_BENGALURU_ORGANIZATIONS;
+      if (isSea) return DEMO_ORGANIZATIONS;
+      return []; // Strict isolation: Unknown city has no verified organizations
     }
 
     try {
       let query = this.firestore.collection('organizations') as FirebaseFirestore.Query;
       if (city) {
-        query = query.where('city', '==', city);
+        query = query.where('city', '==', isBlr ? 'Bengaluru' : city);
       }
       const snapshot = await query.get();
       if (snapshot.empty) {
-        // Return seeded Seattle list if collection not yet populated
-        return SEATTLE_ORGANIZATIONS;
+        if (isBlr) return BENGALURU_ORGANIZATIONS;
+        if (isSea) return SEATTLE_ORGANIZATIONS;
+        return [];
       }
       return snapshot.docs.map(doc => doc.data() as Organization);
     } catch (e) {
       console.warn('Firestore organizations read fallback:', e);
-      return SEATTLE_ORGANIZATIONS;
+      if (isBlr) return BENGALURU_ORGANIZATIONS;
+      if (isSea) return SEATTLE_ORGANIZATIONS;
+      return [];
     }
   }
 
   async getLocalRules(city?: string): Promise<LocalRule[]> {
     const config = getAppConfig();
+    const isBlr = !city || isBengaluruCity(city);
+    const isSea = city && city.trim().toLowerCase() === 'seattle';
+
     if (config.DEMO_MODE || !this.firestore) {
-      const rules = DEMO_LOCAL_RULES;
-      return city ? rules.filter(r => r.city.toLowerCase() === city.toLowerCase()) : rules;
+      if (isBlr) return DEMO_BENGALURU_LOCAL_RULES;
+      if (isSea) return DEMO_LOCAL_RULES;
+      return []; // Strict isolation: Unknown city has no verified rules
     }
 
     try {
       let query = this.firestore.collection('local_rules') as FirebaseFirestore.Query;
       if (city) {
-        query = query.where('city', '==', city);
+        query = query.where('city', '==', isBlr ? 'Bengaluru' : city);
       }
       const snapshot = await query.get();
       if (snapshot.empty) {
-        return SEATTLE_LOCAL_RULES;
+        if (isBlr) return BENGALURU_LOCAL_RULES;
+        if (isSea) return SEATTLE_LOCAL_RULES;
+        return [];
       }
       return snapshot.docs.map(doc => doc.data() as LocalRule);
     } catch (e) {
       console.warn('Firestore local rules read fallback:', e);
-      return SEATTLE_LOCAL_RULES;
+      if (isBlr) return BENGALURU_LOCAL_RULES;
+      if (isSea) return SEATTLE_LOCAL_RULES;
+      return [];
     }
   }
 
@@ -406,6 +450,519 @@ class RepositoryService {
       lastAnalyticsUpdateTime: new Date().toISOString(),
       isDemo: isDemoMode
     };
+  }
+
+  // --- Real Community Listings (Phases 5 & 6) ---
+  async saveListing(listing: Listing): Promise<Listing> {
+    const config = getAppConfig();
+    if (config.DEMO_MODE || !this.firestore) {
+      this.demoListings.set(listing.id, listing);
+      writeJsonFile(getDemoFilePath('listings.json'), this.demoListings);
+      return listing;
+    }
+
+    await this.firestore.collection('listings').doc(listing.id).set(listing);
+    return listing;
+  }
+
+  async getListing(
+    id: string,
+    viewerUserId?: string
+  ): Promise<{ listing: Listing; isOwner: boolean; publicListing: PublicListing } | null> {
+    const config = getAppConfig();
+    let listing: Listing | null = null;
+
+    if (config.DEMO_MODE || !this.firestore) {
+      listing = this.demoListings.get(id) || null;
+      if (!listing) {
+        const diskMap = readJsonFile<Listing>(getDemoFilePath('listings.json'));
+        listing = diskMap.get(id) || null;
+        if (listing) this.demoListings.set(id, listing);
+      }
+    } else {
+      const doc = await this.firestore.collection('listings').doc(id).get();
+      if (doc.exists) {
+        listing = doc.data() as Listing;
+      }
+    }
+
+    if (!listing) return null;
+
+    const isOwner = Boolean(viewerUserId && listing.ownerId === viewerUserId);
+    const { latitude, longitude, ...publicFields } = listing;
+
+    return {
+      listing,
+      isOwner,
+      publicListing: publicFields
+    };
+  }
+
+  async getListings(filters: {
+    localityLat?: number;
+    localityLng?: number;
+    maxDistanceKm?: number;
+    category?: string;
+    condition?: string;
+    isFree?: boolean;
+    maxPrice?: number;
+    status?: ListingStatus;
+    ownerId?: string;
+  }): Promise<PublicListing[]> {
+    const config = getAppConfig();
+    let allListings: Listing[] = [];
+
+    if (config.DEMO_MODE || !this.firestore) {
+      if (this.demoListings.size === 0) {
+        const diskMap = readJsonFile<Listing>(getDemoFilePath('listings.json'));
+        for (const [k, v] of diskMap.entries()) {
+          this.demoListings.set(k, v);
+        }
+      }
+      allListings = Array.from(this.demoListings.values());
+    } else {
+      let query = this.firestore.collection('listings') as FirebaseFirestore.Query;
+      if (filters.status) {
+        query = query.where('status', '==', filters.status);
+      }
+      if (filters.category && filters.category !== 'all') {
+        query = query.where('category', '==', filters.category);
+      }
+      if (filters.ownerId) {
+        query = query.where('ownerId', '==', filters.ownerId);
+      }
+      const snapshot = await query.get();
+      allListings = snapshot.docs.map(doc => doc.data() as Listing);
+    }
+
+    // Apply deterministic in-memory filters
+    const filtered = allListings.filter(l => {
+      // By default show available listings unless specific status queried
+      if (filters.status) {
+        if (l.status !== filters.status) return false;
+      } else if (!filters.ownerId) {
+        if (l.status !== 'available') return false;
+      }
+
+      if (filters.ownerId && l.ownerId !== filters.ownerId) return false;
+      if (filters.category && filters.category !== 'all' && l.category !== filters.category) return false;
+      if (filters.condition && filters.condition !== 'all' && l.confirmedCondition !== filters.condition) return false;
+      if (filters.isFree !== undefined && l.isFree !== filters.isFree) return false;
+      if (filters.maxPrice !== undefined && l.priceInr !== undefined && l.priceInr > filters.maxPrice) return false;
+
+      return true;
+    });
+
+    // Apply Haversine distance calculation and boundary filtering
+    const results: PublicListing[] = [];
+    for (const l of filtered) {
+      let distanceKm: number | undefined;
+      if (filters.localityLat !== undefined && filters.localityLng !== undefined) {
+        distanceKm = calculateHaversineDistanceKm(
+          filters.localityLat,
+          filters.localityLng,
+          l.latitude,
+          l.longitude
+        );
+        if (filters.maxDistanceKm !== undefined && distanceKm > filters.maxDistanceKm) {
+          continue; // Exclude candidates outside requested radius
+        }
+      }
+
+      const { latitude, longitude, ...publicListing } = l;
+      results.push({
+        ...publicListing,
+        approxDistanceKm: distanceKm
+      });
+    }
+
+    // Sort by distance if available, otherwise by recency
+    results.sort((a, b) => {
+      if (a.approxDistanceKm !== undefined && b.approxDistanceKm !== undefined) {
+        return a.approxDistanceKm - b.approxDistanceKm;
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    return results;
+  }
+
+  async updateListing(
+    id: string,
+    updates: Partial<Listing>,
+    callerUserId: string
+  ): Promise<Listing> {
+    const existingResult = await this.getListing(id, callerUserId);
+    if (!existingResult) throw new Error('Listing not found');
+    if (!existingResult.isOwner) throw new Error('Access denied: Only listing owner can edit this listing');
+
+    const updated: Listing = {
+      ...existingResult.listing,
+      ...updates,
+      id,
+      ownerId: existingResult.listing.ownerId, // Preserve owner
+      updatedAt: new Date().toISOString()
+    };
+
+    return this.saveListing(updated);
+  }
+
+  async withdrawListing(id: string, callerUserId: string): Promise<Listing> {
+    return this.updateListing(id, { status: 'withdrawn' }, callerUserId);
+  }
+
+  // --- Listing Interest & Requests (Phase 6) ---
+  async createListingRequest(params: {
+    listingId: string;
+    requesterId: string;
+    requesterDisplayName?: string;
+    message: string;
+  }): Promise<ListingRequest> {
+    const config = getAppConfig();
+    const listingRes = await this.getListing(params.listingId, params.requesterId);
+    if (!listingRes) throw new Error('Listing not found');
+
+    const listing = listingRes.listing;
+    if (listing.ownerId === params.requesterId) {
+      throw new Error('Action not permitted: You cannot request your own listing');
+    }
+    if (listing.status !== 'available') {
+      throw new Error(`Listing is no longer available (current status: ${listing.status})`);
+    }
+
+    const requestId = `req_${Date.now()}_${params.listingId.slice(0, 6)}_${params.requesterId.slice(0, 6)}`;
+    const request: ListingRequest = {
+      id: requestId,
+      listingId: params.listingId,
+      requesterId: params.requesterId,
+      requesterDisplayName: params.requesterDisplayName || 'Community Neighbour',
+      message: params.message.trim(),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isDemo: config.DEMO_MODE
+    };
+
+    if (config.DEMO_MODE || !this.firestore) {
+      this.demoListingRequests.set(requestId, request);
+      writeJsonFile(getDemoFilePath('requests.json'), this.demoListingRequests);
+      return request;
+    }
+
+    await this.firestore.collection('listing_requests').doc(requestId).set(request);
+    return request;
+  }
+
+  async getListingRequests(listingId: string, callerUserId: string): Promise<ListingRequest[]> {
+    const listingRes = await this.getListing(listingId, callerUserId);
+    if (!listingRes) throw new Error('Listing not found');
+    if (!listingRes.isOwner) throw new Error('Access denied: Only the listing owner can view incoming requests');
+
+    const config = getAppConfig();
+    if (config.DEMO_MODE || !this.firestore) {
+      if (this.demoListingRequests.size === 0) {
+        const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
+        for (const [k, v] of diskMap.entries()) {
+          this.demoListingRequests.set(k, v);
+        }
+      }
+      return Array.from(this.demoListingRequests.values()).filter(r => r.listingId === listingId);
+    }
+
+    const snapshot = await this.firestore
+      .collection('listing_requests')
+      .where('listingId', '==', listingId)
+      .get();
+    return snapshot.docs.map(doc => doc.data() as ListingRequest);
+  }
+
+  async getMySentRequests(userId: string): Promise<ListingRequest[]> {
+    const config = getAppConfig();
+    if (config.DEMO_MODE || !this.firestore) {
+      if (this.demoListingRequests.size === 0) {
+        const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
+        for (const [k, v] of diskMap.entries()) {
+          this.demoListingRequests.set(k, v);
+        }
+      }
+      return Array.from(this.demoListingRequests.values()).filter(r => r.requesterId === userId);
+    }
+
+    const snapshot = await this.firestore
+      .collection('listing_requests')
+      .where('requesterId', '==', userId)
+      .get();
+    return snapshot.docs.map(doc => doc.data() as ListingRequest);
+  }
+
+  async respondToListingRequest(params: {
+    listingId: string;
+    requestId: string;
+    action: 'accept' | 'decline' | 'release';
+    ownerId: string;
+  }): Promise<{ listing: Listing; request: ListingRequest }> {
+    const config = getAppConfig();
+    const listingRes = await this.getListing(params.listingId, params.ownerId);
+    if (!listingRes) throw new Error('Listing not found');
+    if (!listingRes.isOwner) throw new Error('Access denied: Only the listing owner can accept/decline requests');
+
+    const listing = listingRes.listing;
+    let request: ListingRequest | null = null;
+
+    if (config.DEMO_MODE || !this.firestore) {
+      request = this.demoListingRequests.get(params.requestId) || null;
+      if (!request) throw new Error('Request not found');
+
+      if (params.action === 'accept') {
+        if (listing.status === 'reserved' && listing.reservedForUserId !== request.requesterId) {
+          throw new Error('Concurrent reservation conflict: Listing is already reserved for another member');
+        }
+        listing.status = 'reserved';
+        listing.reservedForUserId = request.requesterId;
+        listing.reservedAt = new Date().toISOString();
+        request.status = 'accepted';
+      } else if (params.action === 'decline') {
+        request.status = 'declined';
+      } else if (params.action === 'release') {
+        listing.status = 'available';
+        listing.reservedForUserId = undefined;
+        listing.reservedAt = undefined;
+        request.status = 'declined';
+      }
+
+      listing.updatedAt = new Date().toISOString();
+      request.updatedAt = new Date().toISOString();
+
+      this.demoListings.set(listing.id, listing);
+      this.demoListingRequests.set(request.id, request);
+      writeJsonFile(getDemoFilePath('listings.json'), this.demoListings);
+      writeJsonFile(getDemoFilePath('requests.json'), this.demoListingRequests);
+
+      return { listing, request };
+    }
+
+    // Live mode Firestore transaction: prevents race conditions & concurrent double reservation
+    const listingRef = this.firestore.collection('listings').doc(listing.id);
+    const requestRef = this.firestore.collection('listing_requests').doc(params.requestId);
+
+    const result = await this.firestore.runTransaction(async tx => {
+      const listingDoc = await tx.get(listingRef);
+      const requestDoc = await tx.get(requestRef);
+
+      if (!listingDoc.exists || !requestDoc.exists) {
+        throw new Error('Listing or request record does not exist');
+      }
+
+      const currentListing = listingDoc.data() as Listing;
+      const currentRequest = requestDoc.data() as ListingRequest;
+
+      if (params.action === 'accept') {
+        if (currentListing.status === 'reserved' && currentListing.reservedForUserId !== currentRequest.requesterId) {
+          throw new Error('Concurrent reservation conflict: Listing is already reserved for another member');
+        }
+        currentListing.status = 'reserved';
+        currentListing.reservedForUserId = currentRequest.requesterId;
+        currentListing.reservedAt = new Date().toISOString();
+        currentRequest.status = 'accepted';
+      } else if (params.action === 'decline') {
+        currentRequest.status = 'declined';
+      } else if (params.action === 'release') {
+        currentListing.status = 'available';
+        delete currentListing.reservedForUserId;
+        delete currentListing.reservedAt;
+        currentRequest.status = 'declined';
+      }
+
+      currentListing.updatedAt = new Date().toISOString();
+      currentRequest.updatedAt = new Date().toISOString();
+
+      tx.set(listingRef, currentListing);
+      tx.set(requestRef, currentRequest);
+
+      return { listing: currentListing, request: currentRequest };
+    });
+
+    return result;
+  }
+
+  // --- Handover & Outcome Completion (Phase 6 & 8) ---
+  async completeHandover(params: {
+    listingId: string;
+    ownerId: string;
+    selfReportedWeightKg?: number;
+  }): Promise<{ listing: Listing; outcome: Outcome }> {
+    const listingRes = await this.getListing(params.listingId, params.ownerId);
+    if (!listingRes) throw new Error('Listing not found');
+    if (!listingRes.isOwner) throw new Error('Access denied: Only listing owner can mark handover completed');
+
+    const listing = listingRes.listing;
+    if (listing.status === 'completed') {
+      // Idempotent return if already completed
+      const existingOutcomes = await this.getUserOutcomes(params.ownerId);
+      const match = existingOutcomes.find(o => o.listingId === listing.id);
+      if (match) return { listing, outcome: match };
+    }
+
+    const completedAt = new Date().toISOString();
+    listing.status = 'completed';
+    listing.handoverCompletedAt = completedAt;
+    listing.updatedAt = completedAt;
+
+    await this.saveListing(listing);
+
+    // Atomically save outcome and outbox event
+    const outcomeId = `out_listing_${listing.id}_reuse`;
+    const outcome: Outcome = {
+      id: outcomeId,
+      assessmentId: `as_listing_${listing.id}`,
+      listingId: listing.id,
+      userId: listing.ownerId,
+      recipientId: listing.reservedForUserId,
+      category: listing.category,
+      action: 'reuse',
+      city: 'Bengaluru',
+      locality: listing.localityName,
+      completedAt,
+      selfReportedWeightKg: params.selfReportedWeightKg,
+      isDemo: listing.isDemo
+    };
+
+    const outboxResult = await this.saveOutcomeWithOutbox(outcome);
+    return { listing, outcome: outboxResult.outcome };
+  }
+
+  async confirmReceipt(params: {
+    listingId: string;
+    recipientUserId: string;
+  }): Promise<{ listing: Listing; outcome: Outcome }> {
+    const config = getAppConfig();
+    const listingRes = await this.getListing(params.listingId, params.recipientUserId);
+    if (!listingRes) throw new Error('Listing not found');
+
+    const listing = listingRes.listing;
+    if (listing.reservedForUserId !== params.recipientUserId) {
+      throw new Error('Access denied: You are not the accepted recipient for this listing');
+    }
+
+    const now = new Date().toISOString();
+    listing.recipientConfirmedAt = now;
+    listing.updatedAt = now;
+    await this.saveListing(listing);
+
+    // Fetch existing outcome and record confirmation event
+    const outcomeId = `out_listing_${listing.id}_reuse`;
+    let outcome: Outcome;
+
+    if (config.DEMO_MODE || !this.firestore) {
+      outcome = this.demoOutcomes.get(outcomeId) || {
+        id: outcomeId,
+        assessmentId: `as_listing_${listing.id}`,
+        listingId: listing.id,
+        userId: listing.ownerId,
+        recipientId: params.recipientUserId,
+        category: listing.category,
+        action: 'reuse',
+        city: 'Bengaluru',
+        locality: listing.localityName,
+        completedAt: listing.handoverCompletedAt || now,
+        recipientConfirmedAt: now,
+        isDemo: true
+      };
+      outcome.recipientConfirmedAt = now;
+      this.demoOutcomes.set(outcomeId, outcome);
+      writeJsonFile(getDemoFilePath('outcomes.json'), this.demoOutcomes);
+
+      // Record recipient confirmation analytics event
+      const confirmationEvent: AnalyticsEvent = {
+        eventId: `event_confirm_${outcomeId}`,
+        schemaVersion: '1.0.0',
+        eventType: 'outcome.recipient_confirmed',
+        outcomeId: outcome.id,
+        listingId: listing.id,
+        category: outcome.category,
+        action: 'reuse',
+        city: 'Bengaluru',
+        locality: listing.localityName,
+        completedAt: now,
+        isDemo: true,
+        publishStatus: 'pending'
+      };
+      this.demoAnalyticsEvents.set(confirmationEvent.eventId, confirmationEvent);
+      writeJsonFile(getDemoFilePath('events.json'), this.demoAnalyticsEvents);
+
+      return { listing, outcome };
+    }
+
+    const outcomeRef = this.firestore.collection('outcomes').doc(outcomeId);
+    const doc = await outcomeRef.get();
+    if (doc.exists) {
+      outcome = doc.data() as Outcome;
+      outcome.recipientConfirmedAt = now;
+      await outcomeRef.update({ recipientConfirmedAt: now });
+    } else {
+      outcome = {
+        id: outcomeId,
+        assessmentId: `as_listing_${listing.id}`,
+        listingId: listing.id,
+        userId: listing.ownerId,
+        recipientId: params.recipientUserId,
+        category: listing.category,
+        action: 'reuse',
+        city: 'Bengaluru',
+        locality: listing.localityName,
+        completedAt: listing.handoverCompletedAt || now,
+        recipientConfirmedAt: now,
+        isDemo: false
+      };
+      await outcomeRef.set(outcome);
+    }
+
+    // Add confirmation event into outbox
+    const confEventId = `event_confirm_${outcomeId}`;
+    const confirmationEvent: AnalyticsEvent = {
+      eventId: confEventId,
+      schemaVersion: '1.0.0',
+      eventType: 'outcome.recipient_confirmed',
+      outcomeId: outcome.id,
+      listingId: listing.id,
+      category: outcome.category,
+      action: 'reuse',
+      city: 'Bengaluru',
+      locality: listing.localityName,
+      completedAt: now,
+      isDemo: false,
+      publishStatus: 'pending'
+    };
+    await this.firestore.collection('outbox_events').doc(confEventId).set(confirmationEvent);
+
+    return { listing, outcome };
+  }
+
+  // --- Listing Moderation & Reporting ---
+  async reportListing(
+    listingId: string,
+    reporterUserId: string,
+    reason: string
+  ): Promise<{ success: boolean; reportId: string }> {
+    const config = getAppConfig();
+    const reportId = `rep_${Date.now()}_${listingId.slice(0, 8)}`;
+    const reportRecord = {
+      id: reportId,
+      listingId,
+      reporterUserId,
+      reason,
+      createdAt: new Date().toISOString(),
+      status: 'pending_moderation'
+    };
+
+    if (config.DEMO_MODE || !this.firestore) {
+      // Record locally
+      console.log('Listing moderation report recorded:', reportRecord);
+      return { success: true, reportId };
+    }
+
+    await this.firestore.collection('listing_reports').doc(reportId).set(reportRecord);
+    return { success: true, reportId };
   }
 }
 

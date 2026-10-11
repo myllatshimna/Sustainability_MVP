@@ -31,7 +31,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
 
   useEffect(() => {
-    // Check if demo user stored in localStorage
+    // Fetch live environment configuration from server
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (typeof data.isDemoMode === 'boolean') {
+          setIsDemoMode(data.isDemoMode);
+        }
+      })
+      .catch(err => console.warn('Could not fetch server config:', err));
+
+    // Check if user session stored in localStorage
     const savedUser = localStorage.getItem('reloop_user');
     const savedToken = localStorage.getItem('reloop_token');
     if (savedUser && savedToken) {
