@@ -81,47 +81,72 @@ async function runAuthFixVerification() {
   });
 
   const page = await browser.newPage();
+  page.on('console', msg => {
+    const text = msg.text();
+    if (text.includes('Google Sign-In') || text.includes('Account switch') || text.includes('popup')) {
+      console.log(`  [Browser Console]: ${text}`);
+    }
+  });
 
   let alertDialogs = [];
   page.on('dialog', async dialog => {
     alertDialogs.push(dialog.message());
-    console.log('  ⚠️ UNEXPECTED DIALOG ENCOUNTERED:', dialog.message());
+    console.log('  ⚠️ UNEXPECTED ALERT DIALOG ENCOUNTERED:', dialog.message());
     await dialog.dismiss();
   });
 
-  // Step 2: Test Single Click & Button State
-  console.log('\nStep 2: Testing Single Click & In-Flight State...');
-  await page.goto(`${CLOUD_RUN_BASE_URL}/listings`, { waitUntil: 'networkidle2' });
-
-  // Listen for popup target
   let popupOpenedCount = 0;
+  let activePopupPage = null;
+
   browser.on('targetcreated', async target => {
     const url = target.url();
     if (url.includes('accounts.google.com') || url.includes('firebaseapp.com/__/auth/handler')) {
       popupOpenedCount++;
-      console.log(`  ✓ Auth popup detected: ${url.slice(0, 75)}...`);
-      // Close popup to simulate user dismissal
-      try {
-        const popupPage = await target.page();
-        if (popupPage) await popupPage.close();
-      } catch {}
+      console.log(`  ✓ Auth popup target created: ${url.slice(0, 75)}...`);
+      const p = await target.page().catch(() => null);
+      if (p) activePopupPage = p;
     }
   });
 
-  const singleClickSuccess = await page.evaluate(() => {
+  // Step 2: Test Single Click & In-Flight State
+  console.log('\nStep 2: Testing Single Click & In-Flight State...');
+  await page.goto(`${CLOUD_RUN_BASE_URL}/listings`, { waitUntil: 'networkidle2' });
+
+  await page.evaluate(() => {
     const buttons = Array.from(document.querySelectorAll('button'));
     const signInBtn = buttons.find(b => b.innerText.includes('Google Sign-In'));
-    if (!signInBtn) return false;
-    signInBtn.click();
-    return signInBtn.disabled || signInBtn.innerText.includes('Signing In');
+    if (signInBtn) signInBtn.click();
   });
 
-  console.log(`  ✓ Sign-in button immediately disabled/pending on click: ${singleClickSuccess}`);
+  const buttonBecamePending = await page.waitForFunction(() => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const btn = buttons.find(b => b.innerText.includes('Signing In') || b.innerText.includes('Google Sign-In'));
+    return Boolean(btn && (btn.disabled || btn.innerText.includes('Signing In')));
+  }, { timeout: 5000 }).then(() => true).catch(() => false);
+
+  console.log(`  ✓ Sign-in button immediately disabled/pending on click: ${buttonBecamePending}`);
+  
+  // Wait 2s for popup to initialize
   await new Promise(r => setTimeout(r, 2000));
+  if (activePopupPage && !activePopupPage.isClosed()) {
+    console.log('  ✓ Simulating user cancellation (closing popup window)...');
+    await activePopupPage.close().catch(() => {});
+    activePopupPage = null;
+  }
+
+  // Verify button re-enables after cancellation
+  const reEnabledAfterCancel = await page.waitForFunction(() => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const signInBtn = buttons.find(b => b.innerText.includes('Google Sign-In'));
+    return Boolean(signInBtn && !signInBtn.disabled);
+  }, { timeout: 10000 }).then(() => true).catch(() => false);
+  console.log(`  ✓ Button re-enabled after cancellation: ${reEnabledAfterCancel}`);
+  if (!reEnabledAfterCancel) {
+    throw new Error('Button remained disabled after popup dismissal!');
+  }
 
   // Step 3: Test Rapid Double Click (Overlapping prevention)
   console.log('\nStep 3: Testing Rapid Double-Click Concurrency Guard...');
-  await page.goto(`${CLOUD_RUN_BASE_URL}/listings`, { waitUntil: 'networkidle2' });
   popupOpenedCount = 0;
   alertDialogs = [];
 
@@ -135,7 +160,7 @@ async function runAuthFixVerification() {
     return true;
   });
 
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 2000));
   console.log(`  ✓ Rapid double-click dispatched: ${doubleClickDispatched}`);
   console.log(`  ✓ Popups opened: ${popupOpenedCount} (Must be at most 1)`);
   console.log(`  ✓ Alert dialogs triggered: ${alertDialogs.length} (Must be 0)`);
@@ -146,14 +171,22 @@ async function runAuthFixVerification() {
     throw new Error(`Expected at most 1 popup from rapid double click, got ${popupOpenedCount}`);
   }
 
+  // Wait 2s for popup handler to attach, then dismiss popup from double-click test
+  await new Promise(r => setTimeout(r, 2500));
+  if (activePopupPage && !activePopupPage.isClosed()) {
+    console.log('  ✓ Closing double-click popup window...');
+    await activePopupPage.close().catch(() => {});
+    activePopupPage = null;
+  }
+
   // Step 4: Test Retry After Cancellation
   console.log('\nStep 4: Testing Retry After Dismissal...');
-  // After popup was dismissed, button must become clickable again
-  const canRetry = await page.evaluate(() => {
+  const canRetry = await page.waitForFunction(() => {
     const buttons = Array.from(document.querySelectorAll('button'));
     const signInBtn = buttons.find(b => b.innerText.includes('Google Sign-In'));
-    return signInBtn && !signInBtn.disabled;
-  });
+    return Boolean(signInBtn && !signInBtn.disabled);
+  }, { timeout: 10000 }).then(() => true).catch(() => false);
+
   console.log(`  ✓ Button is re-enabled and ready for retry: ${canRetry}`);
   if (!canRetry) {
     throw new Error('Button remained disabled after popup dismissal!');
@@ -202,7 +235,13 @@ async function runAuthFixVerification() {
     if (switchBtn) switchBtn.click();
   });
 
-  await new Promise(r => setTimeout(r, 2500));
+  await new Promise(r => setTimeout(r, 2000));
+  if (activePopupPage && !activePopupPage.isClosed()) {
+    await activePopupPage.close().catch(() => {});
+    activePopupPage = null;
+  }
+
+  await new Promise(r => setTimeout(r, 1500));
 
   // Verify that current session was preserved after popup dismissal
   const sessionAfterCancelledSwitch = await page.evaluate(() => {
@@ -225,7 +264,7 @@ async function runAuthFixVerification() {
   await page.goto(`${CLOUD_RUN_BASE_URL}/listings/new`, { waitUntil: 'networkidle2' });
 
   // Fill in listing form
-  await page.type('input[placeholder*="Solid oak dining table"]', `Verified Auth Item (${testRunId})`);
+  await page.type('input[placeholder*="Solid Teak Study Chair"]', `Verified Auth Item (${testRunId})`);
   await page.type('textarea[placeholder*="Describe the item"]', 'Created during live verification of Firebase auth guard.');
 
   // Submit listing
@@ -234,8 +273,8 @@ async function runAuthFixVerification() {
     if (submitBtn) submitBtn.click();
   });
 
-  // Wait for redirect to /listings
-  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+  // Wait for redirect to /listings/list_...
+  await page.waitForFunction(() => window.location.pathname.startsWith('/listings/list_'), { timeout: 15000 }).catch(() => {});
   const currentUrl = page.url();
   console.log(`  ✓ Navigated to URL after action: ${currentUrl}`);
 
@@ -254,6 +293,7 @@ async function runAuthFixVerification() {
     testRunId,
     ownerUid: ownerAuth.uid,
     neighbourUid: neighbourAuth.uid,
+    listingUrl: currentUrl,
     screenshotPath
   };
 }
