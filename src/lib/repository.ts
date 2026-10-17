@@ -361,15 +361,26 @@ class RepositoryService {
           this.demoOutcomes.set(k, v);
         }
       }
-      return Array.from(this.demoOutcomes.values()).filter(o => o.userId === userId);
+      const demoList = Array.from(this.demoOutcomes.values()).filter(o => o.userId === userId || o.recipientId === userId);
+      return demoList.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
     }
 
-    const snapshot = await db
-      .collection('outcomes')
-      .where('userId', '==', userId)
-      .get();
+    const [userSnap, recipientSnap] = await Promise.all([
+      db.collection('outcomes').where('userId', '==', userId).get(),
+      db.collection('outcomes').where('recipientId', '==', userId).get()
+    ]);
 
-    return snapshot.docs.map(doc => doc.data() as Outcome);
+    const outcomeMap = new Map<string, Outcome>();
+    for (const doc of userSnap.docs) {
+      outcomeMap.set(doc.id, doc.data() as Outcome);
+    }
+    for (const doc of recipientSnap.docs) {
+      outcomeMap.set(doc.id, doc.data() as Outcome);
+    }
+
+    const outcomes = Array.from(outcomeMap.values());
+    outcomes.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+    return outcomes;
   }
 
   // --- Publishing Worker / Outbox Dispatcher ---
@@ -587,6 +598,7 @@ class RepositoryService {
     maxPrice?: number;
     status?: ListingStatus;
     ownerId?: string;
+    includeTest?: boolean;
   }): Promise<PublicListing[]> {
     let allListings: Listing[] = [];
     const db = this.getFirestore();
@@ -616,6 +628,11 @@ class RepositoryService {
 
     // Apply deterministic in-memory filters
     const filtered = allListings.filter(l => {
+      // In live production mode, exclude server-tagged synthetic test listings and demo records from public browse
+      if (!this.isDemoMode() && !filters.includeTest && !filters.ownerId) {
+        if (l.isTest || l.isDemo) return false;
+      }
+
       // By default show available listings unless specific status queried
       if (filters.status) {
         if (l.status !== filters.status) return false;

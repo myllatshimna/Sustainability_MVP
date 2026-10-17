@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Tag, 
@@ -43,11 +43,13 @@ interface UserActivity {
   totalSentRequests: number;
 }
 
+type TabType = 'explore' | 'my_listings' | 'incoming_requests' | 'my_requests';
+
 export default function ListingsPage() {
   const { locality, radiusKm } = useLocality();
-  const { user, token } = useAuth();
+  const { user, token, isAuthReady } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'explore' | 'my_offers' | 'my_requests'>('explore');
+  const [activeTab, setActiveTab] = useState<TabType>('explore');
   const [listings, setListings] = useState<PublicListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +64,19 @@ export default function ListingsPage() {
   const [selectedCondition, setSelectedCondition] = useState<string>('all');
   const [isFreeFilter, setIsFreeFilter] = useState<boolean | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const activitySeqRef = useRef<number>(0);
+
+  // Support ?tab= query parameter on client without requiring Suspense boundary
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const tab = p.get('tab');
+      if (tab === 'my_listings' || tab === 'incoming_requests' || tab === 'my_requests' || tab === 'explore') {
+        setActiveTab(tab as TabType);
+      }
+    }
+  }, []);
 
   const fetchListings = async () => {
     setLoading(true);
@@ -92,7 +107,12 @@ export default function ListingsPage() {
   };
 
   const fetchActivity = async () => {
-    if (!token && !user) return;
+    if (!token && !user) {
+      setActivity(null);
+      return;
+    }
+    const currentUid = user?.uid;
+    const seq = ++activitySeqRef.current;
     setLoadingActivity(true);
     try {
       const res = await fetch('/api/listings/activity', {
@@ -101,13 +121,20 @@ export default function ListingsPage() {
         }
       });
       const data = await res.json();
+      if (seq !== activitySeqRef.current) return;
+
       if (res.ok) {
+        // Guard against previous account's delayed response populating screen
+        if (data.userId && currentUid && data.userId !== currentUid) return;
         setActivity(data);
       }
     } catch (err) {
+      if (seq !== activitySeqRef.current) return;
       console.warn('Could not fetch user activity:', err);
     } finally {
-      setLoadingActivity(false);
+      if (seq === activitySeqRef.current) {
+        setLoadingActivity(false);
+      }
     }
   };
 
@@ -116,10 +143,21 @@ export default function ListingsPage() {
   }, [locality, radiusKm, selectedCategory, selectedCondition, isFreeFilter]);
 
   useEffect(() => {
+    setActivity(null); // Clear immediately on account or token switch
     fetchActivity();
-  }, [user, token]);
+  }, [user?.uid, token]);
 
-  const handleRespondRequest = async (listingId: string, requestId: string, action: 'accept' | 'decline') => {
+  useEffect(() => {
+    const handler = () => {
+      setActivity(null);
+      fetchActivity();
+      fetchListings();
+    };
+    window.addEventListener('reloop_auth_changed', handler);
+    return () => window.removeEventListener('reloop_auth_changed', handler);
+  }, [user?.uid, token]);
+
+  const handleRespondRequest = async (listingId: string, requestId: string, action: 'accept' | 'decline' | 'release') => {
     setActionInProgress(requestId);
     try {
       const res = await fetch(`/api/listings/${listingId}/reserve`, {
@@ -161,11 +199,18 @@ export default function ListingsPage() {
     }
   }
 
-  // Incoming requests count for user's listings
-  const totalIncomingPending = activity?.myListings.reduce((sum, item) => {
-    const pendingCount = item.requests.filter(r => r.status === 'pending').length;
-    return sum + pendingCount;
-  }, 0) || 0;
+  // Flatten all incoming requests across all user listings
+  const allIncomingRequests: Array<{ request: ListingRequest; listing: PublicListing }> = [];
+  if (activity?.myListings) {
+    for (const item of activity.myListings) {
+      for (const req of item.requests) {
+        allIncomingRequests.push({ request: req, listing: item.listing });
+      }
+    }
+  }
+  allIncomingRequests.sort((a, b) => new Date(b.request.createdAt).getTime() - new Date(a.request.createdAt).getTime());
+
+  const totalIncomingPending = allIncomingRequests.filter(r => r.request.status === 'pending').length;
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
@@ -177,7 +222,7 @@ export default function ListingsPage() {
             <span>Bengaluru Neighbourhood Reuse</span>
           </div>
           <h1 className="text-3xl font-extrabold text-forest-950">
-            Community Reuse Listings
+            Community Reuse Marketplace
           </h1>
           <p className="text-sm text-gray-600 mt-0.5">
             Give items a second life. Offer items for free or fair reuse, or request items near your locality.
@@ -195,12 +240,12 @@ export default function ListingsPage() {
         </div>
       </div>
 
-      {/* Navigation Tabs (Explore, My Offers, My Requests) */}
-      <div className="flex items-center space-x-2 border-b border-warm-200 pb-1">
+      {/* Navigation Tabs (Explore, My Listings, Incoming Requests, My Requests) */}
+      <div className="flex items-center space-x-2 border-b border-warm-200 pb-1 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab('explore')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition ${
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition shrink-0 ${
             activeTab === 'explore'
               ? 'bg-forest-700 text-white shadow-xs'
               : 'text-gray-600 hover:bg-warm-100'
@@ -217,20 +262,40 @@ export default function ListingsPage() {
 
         <button
           type="button"
-          onClick={() => setActiveTab('my_offers')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition relative ${
-            activeTab === 'my_offers'
+          onClick={() => setActiveTab('my_listings')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition shrink-0 ${
+            activeTab === 'my_listings'
+              ? 'bg-forest-700 text-white shadow-xs'
+              : 'text-gray-600 hover:bg-warm-100'
+          }`}
+        >
+          <Tag className="w-3.5 h-3.5" />
+          <span>My Listings</span>
+          {activity?.myListings && activity.myListings.length > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+              activeTab === 'my_listings' ? 'bg-forest-800 text-white' : 'bg-warm-200 text-gray-700'
+            }`}>
+              {activity.myListings.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('incoming_requests')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition shrink-0 relative ${
+            activeTab === 'incoming_requests'
               ? 'bg-forest-700 text-white shadow-xs'
               : 'text-gray-600 hover:bg-warm-100'
           }`}
         >
           <Inbox className="w-3.5 h-3.5" />
-          <span>My Offers &amp; Requests</span>
-          {activity?.myListings && activity.myListings.length > 0 && (
+          <span>Incoming Requests</span>
+          {allIncomingRequests.length > 0 && (
             <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-              activeTab === 'my_offers' ? 'bg-forest-800 text-white' : 'bg-warm-200 text-gray-700'
+              activeTab === 'incoming_requests' ? 'bg-forest-800 text-white' : 'bg-warm-200 text-gray-700'
             }`}>
-              {activity.myListings.length}
+              {allIncomingRequests.length}
             </span>
           )}
           {totalIncomingPending > 0 && (
@@ -243,7 +308,7 @@ export default function ListingsPage() {
         <button
           type="button"
           onClick={() => setActiveTab('my_requests')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition ${
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition shrink-0 ${
             activeTab === 'my_requests'
               ? 'bg-forest-700 text-white shadow-xs'
               : 'text-gray-600 hover:bg-warm-100'
@@ -351,7 +416,7 @@ export default function ListingsPage() {
                 <Tag className="w-6 h-6" />
               </div>
               <h2 className="text-lg font-bold text-gray-900">
-                No listings found within {radiusKm} km of {locality.name}
+                No active listings found within {radiusKm} km of {locality.name}
               </h2>
               <p className="text-sm text-gray-500 max-w-md mx-auto">
                 Be the first in your neighbourhood to offer an unwanted item, or expand your search radius to 10 km or 20 km.
@@ -408,7 +473,7 @@ export default function ListingsPage() {
                       <div className="absolute top-3 left-3 flex flex-col gap-1 items-start">
                         {isOwnerOfItem && (
                           <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-forest-900 text-white shadow-sm flex items-center space-x-1">
-                            <span>👑 Your Offer</span>
+                            <span>👑 Your Listing</span>
                           </span>
                         )}
 
@@ -466,7 +531,14 @@ export default function ListingsPage() {
                           <MapPin className="w-3.5 h-3.5 text-forest-600 shrink-0" />
                           <span className="truncate">{item.localityName}</span>
                         </div>
-                        <span className="shrink-0">{formatBengaluruDateOnly(item.createdAt)}</span>
+                        {isOwnerOfItem ? (
+                          <span className="text-forest-800 font-bold flex items-center space-x-1">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Manage Listing</span>
+                          </span>
+                        ) : (
+                          <span className="shrink-0">{formatBengaluruDateOnly(item.createdAt)}</span>
+                        )}
                       </div>
                     </div>
                   </Link>
@@ -477,20 +549,20 @@ export default function ListingsPage() {
         </div>
       )}
 
-      {/* --- TAB 2: MY OFFERS & INCOMING REQUESTS --- */}
-      {activeTab === 'my_offers' && (
+      {/* --- TAB 2: MY LISTINGS --- */}
+      {activeTab === 'my_listings' && (
         <div className="space-y-6">
           <div className="bg-forest-50 border border-forest-200 rounded-2xl p-4 text-xs text-forest-900 flex items-start space-x-3">
-            <Inbox className="w-4 h-4 text-forest-700 shrink-0 mt-0.5" />
+            <Tag className="w-4 h-4 text-forest-700 shrink-0 mt-0.5" />
             <div>
-              <strong>Items you have offered to neighbours:</strong> When neighbours express interest, their messages appear directly under the item. You can accept a request to reserve the item, or open the listing to complete the real-world handover.
+              <strong>Items you have posted for community reuse:</strong> Review active, reserved, and completed listings. Click &ldquo;Manage / Handover&rdquo; on any item to view requests, reserve for neighbours, or record handovers.
             </div>
           </div>
 
           {loadingActivity ? (
             <div className="py-20 text-center space-y-3">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-forest-700" />
-              <p className="text-sm text-gray-500">Loading your offers and incoming requests...</p>
+              <p className="text-sm text-gray-500">Loading your community listings...</p>
             </div>
           ) : !activity || activity.myListings.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-3xl border border-warm-200 p-8 space-y-4">
@@ -499,7 +571,7 @@ export default function ListingsPage() {
               </div>
               <h2 className="text-lg font-bold text-gray-900">You haven&apos;t posted any items yet</h2>
               <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                Give your unused furniture, textiles, or clean packaging a second life in your Bengaluru neighbourhood.
+                Offer your unused furniture, textiles, or clean packaging a second life in your Bengaluru neighbourhood.
               </p>
               <div className="pt-2">
                 <Link
@@ -512,155 +584,60 @@ export default function ListingsPage() {
               </div>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {activity.myListings.map(({ listing, requests }) => {
-                const pendingRequests = requests.filter(r => r.status === 'pending');
-                const acceptedRequest = requests.find(r => r.status === 'accepted');
+                const pendingCount = requests.filter(r => r.status === 'pending').length;
 
                 return (
                   <div
                     key={listing.id}
-                    className="bg-white rounded-3xl border border-warm-200 shadow-2xs overflow-hidden"
+                    className="bg-white rounded-3xl border border-warm-200 shadow-2xs p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
-                    {/* Item Summary Bar */}
-                    <div className="p-5 bg-warm-50/60 border-b border-warm-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-16 h-16 rounded-xl bg-warm-100 overflow-hidden flex items-center justify-center shrink-0">
-                          {listing.photos && listing.photos.length > 0 ? (
-                            <img src={listing.photos[0]} alt={listing.title} className="w-full h-full object-cover" />
-                          ) : (
-                            <Tag className="w-6 h-6 text-gray-400" />
+                    <div className="flex items-center space-x-4">
+                      <div className="w-16 h-16 rounded-xl bg-warm-100 overflow-hidden flex items-center justify-center shrink-0">
+                        {listing.photos && listing.photos.length > 0 ? (
+                          <img src={listing.photos[0]} alt={listing.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Tag className="w-6 h-6 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-extrabold text-base text-gray-950">{listing.title}</h3>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            listing.status === 'available'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : listing.status === 'reserved'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {listing.status}
+                          </span>
+                          {pendingCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                              {pendingCount} new request{pendingCount === 1 ? '' : 's'}
+                            </span>
                           )}
                         </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-extrabold text-base text-gray-950">{listing.title}</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              listing.status === 'available'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : listing.status === 'reserved'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {listing.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 flex items-center space-x-2">
-                            <span>{listing.localityName}, Bengaluru</span>
-                            <span>&bull;</span>
-                            <span>{listing.isFree ? 'Free Giveaway' : formatInrCurrency(listing.priceInr)}</span>
-                            <span>&bull;</span>
-                            <span>{requests.length} total request{requests.length === 1 ? '' : 's'}</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2 shrink-0">
-                        <Link
-                          href={`/listings/${listing.id}`}
-                          className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-forest-50 border border-warm-200 text-forest-800 transition"
-                        >
-                          <span>Manage / Handover</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </Link>
+                        <p className="text-xs text-gray-500 flex items-center space-x-2">
+                          <span>{listing.localityName}, Bengaluru</span>
+                          <span>&bull;</span>
+                          <span>{listing.isFree ? 'Free Giveaway' : formatInrCurrency(listing.priceInr)}</span>
+                          <span>&bull;</span>
+                          <span>{requests.length} total request{requests.length === 1 ? '' : 's'}</span>
+                        </p>
                       </div>
                     </div>
 
-                    {/* Incoming Requests Section */}
-                    <div className="p-5 space-y-3">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-1.5">
-                        <MessageSquare className="w-3.5 h-3.5 text-forest-700" />
-                        <span>Incoming Neighbour Requests ({requests.length})</span>
-                      </h3>
-
-                      {requests.length === 0 ? (
-                        <div className="py-6 text-center text-xs text-gray-400">
-                          No requests received yet for this item. When neighbours express interest, they will appear here.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {requests.map((req) => (
-                            <div
-                              key={req.id}
-                              className={`p-4 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                                req.status === 'accepted'
-                                  ? 'bg-emerald-50/70 border-emerald-200'
-                                  : req.status === 'declined'
-                                  ? 'bg-gray-50 border-gray-200 opacity-60'
-                                  : 'bg-warm-50/50 border-warm-200'
-                              }`}
-                            >
-                              <div className="space-y-1 max-w-xl">
-                                <div className="flex items-center space-x-2">
-                                  <span className="font-bold text-gray-900 flex items-center space-x-1">
-                                    <User className="w-3.5 h-3.5 text-gray-500" />
-                                    <span>{req.requesterDisplayName || 'Neighbour'}</span>
-                                  </span>
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                    req.status === 'accepted'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : req.status === 'declined'
-                                      ? 'bg-red-100 text-red-800'
-                                      : 'bg-amber-100 text-amber-800'
-                                  }`}>
-                                    {req.status}
-                                  </span>
-                                  <span className="text-[11px] text-gray-400">
-                                    {formatBengaluruDateTime(req.createdAt)}
-                                  </span>
-                                </div>
-                                <p className="text-gray-700 bg-white/70 p-2.5 rounded-xl border border-warm-200/60 italic">
-                                  &ldquo;{req.message}&rdquo;
-                                </p>
-                              </div>
-
-                              <div className="flex items-center space-x-2 shrink-0">
-                                {req.status === 'pending' && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      disabled={actionInProgress === req.id}
-                                      onClick={() => handleRespondRequest(listing.id, req.id, 'accept')}
-                                      className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs disabled:opacity-50"
-                                    >
-                                      {actionInProgress === req.id ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : (
-                                        <Check className="w-3.5 h-3.5" />
-                                      )}
-                                      <span>Accept &amp; Reserve</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={actionInProgress === req.id}
-                                      onClick={() => handleRespondRequest(listing.id, req.id, 'decline')}
-                                      className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-gray-100 border border-warm-200 text-gray-700 transition disabled:opacity-50"
-                                    >
-                                      <X className="w-3.5 h-3.5" />
-                                      <span>Decline</span>
-                                    </button>
-                                  </>
-                                )}
-
-                                {req.status === 'accepted' && (
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-xs font-bold text-emerald-800 flex items-center space-x-1">
-                                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                      <span>Reserved for this neighbour</span>
-                                    </span>
-                                    <Link
-                                      href={`/listings/${listing.id}`}
-                                      className="px-3 py-1.5 bg-forest-700 hover:bg-forest-800 text-white font-bold rounded-xl text-xs shadow-xs"
-                                    >
-                                      Complete Handover
-                                    </Link>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <Link
+                        href={`/listings/${listing.id}`}
+                        className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-forest-700 hover:bg-forest-800 text-white transition shadow-xs"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Manage / Handover</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
                   </div>
                 );
@@ -670,7 +647,150 @@ export default function ListingsPage() {
         </div>
       )}
 
-      {/* --- TAB 3: MY REQUESTS (ITEMS EXPRESSED INTEREST IN) --- */}
+      {/* --- TAB 3: INCOMING REQUESTS --- */}
+      {activeTab === 'incoming_requests' && (
+        <div className="space-y-6">
+          <div className="bg-forest-50 border border-forest-200 rounded-2xl p-4 text-xs text-forest-900 flex items-start space-x-3">
+            <Inbox className="w-4 h-4 text-forest-700 shrink-0 mt-0.5" />
+            <div>
+              <strong>Incoming requests on your items:</strong> When neighbours express interest, you can accept their request to reserve the item, coordinate pickup in your locality, or decline if unavailable.
+            </div>
+          </div>
+
+          {loadingActivity ? (
+            <div className="py-20 text-center space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-forest-700" />
+              <p className="text-sm text-gray-500">Loading incoming requests...</p>
+            </div>
+          ) : allIncomingRequests.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-3xl border border-warm-200 p-8 space-y-4">
+              <div className="w-12 h-12 rounded-full bg-forest-100 text-forest-800 flex items-center justify-center mx-auto">
+                <Inbox className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900">No incoming requests yet</h2>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                When neighbours express interest in any of your active listings, their messages and requests will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {allIncomingRequests.map(({ request, listing }) => (
+                <div
+                  key={request.id}
+                  className={`bg-white rounded-3xl border shadow-2xs p-5 space-y-3 ${
+                    request.status === 'accepted'
+                      ? 'border-emerald-300 bg-emerald-50/20'
+                      : request.status === 'declined'
+                      ? 'border-warm-200 opacity-60'
+                      : 'border-warm-200'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-warm-100">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-lg bg-warm-100 overflow-hidden flex items-center justify-center shrink-0">
+                        {listing.photos && listing.photos.length > 0 ? (
+                          <img src={listing.photos[0]} alt={listing.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Tag className="w-4 h-4 text-gray-400" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[11px] font-bold uppercase text-gray-400">For Your Listing:</span>
+                          <Link href={`/listings/${listing.id}`} className="font-extrabold text-sm text-forest-950 hover:underline">
+                            {listing.title}
+                          </Link>
+                        </div>
+                        <span className="text-xs text-gray-500">{listing.localityName}, Bengaluru</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        request.status === 'accepted'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : request.status === 'declined'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {request.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Requester Message Body */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1 max-w-xl">
+                      <div className="flex items-center space-x-2 text-xs">
+                        <span className="font-bold text-gray-900 flex items-center space-x-1">
+                          <User className="w-3.5 h-3.5 text-gray-500" />
+                          <span>{request.requesterDisplayName || 'Neighbour'}</span>
+                        </span>
+                        <span>&bull;</span>
+                        <span className="text-[11px] text-gray-400">{formatBengaluruDateTime(request.createdAt)}</span>
+                      </div>
+                      <p className="text-xs text-gray-700 bg-warm-50 p-3 rounded-xl border border-warm-200/60 italic">
+                        &ldquo;{request.message}&rdquo;
+                      </p>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center space-x-2 shrink-0">
+                      {request.status === 'pending' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={actionInProgress === request.id}
+                            onClick={() => handleRespondRequest(listing.id, request.id, 'accept')}
+                            className="inline-flex items-center space-x-1 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs disabled:opacity-50"
+                          >
+                            {actionInProgress === request.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                            <span>Accept &amp; Reserve</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionInProgress === request.id}
+                            onClick={() => handleRespondRequest(listing.id, request.id, 'decline')}
+                            className="inline-flex items-center space-x-1 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-gray-100 border border-warm-200 text-gray-700 transition disabled:opacity-50"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>Decline</span>
+                          </button>
+                        </>
+                      )}
+
+                      {request.status === 'accepted' && (
+                        <div className="flex items-center space-x-2">
+                          <Link
+                            href={`/listings/${listing.id}`}
+                            className="px-4 py-2 bg-forest-700 hover:bg-forest-800 text-white font-bold rounded-xl text-xs shadow-xs"
+                          >
+                            Complete Handover
+                          </Link>
+                          <button
+                            type="button"
+                            disabled={actionInProgress === request.id}
+                            onClick={() => handleRespondRequest(listing.id, request.id, 'release')}
+                            className="px-3 py-2 bg-warm-100 hover:bg-warm-200 text-gray-700 font-semibold rounded-xl text-xs"
+                          >
+                            Release
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- TAB 4: MY REQUESTS (SENT REQUESTS) --- */}
       {activeTab === 'my_requests' && (
         <div className="space-y-6">
           <div className="bg-forest-50 border border-forest-200 rounded-2xl p-4 text-xs text-forest-900 flex items-start space-x-3">
@@ -762,7 +882,7 @@ export default function ListingsPage() {
                       href={`/listings/${request.listingId}`}
                       className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-forest-700 hover:bg-forest-800 text-white transition shadow-xs"
                     >
-                      <span>View Listing Details</span>
+                      <span>{request.status === 'accepted' ? 'View & Confirm Receipt' : 'View Listing Details'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>

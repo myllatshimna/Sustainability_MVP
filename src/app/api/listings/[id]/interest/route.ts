@@ -28,10 +28,23 @@ export async function POST(
     const body = await req.json();
     const parsed = InterestRequestSchema.parse(body);
 
+    // Reject self-interest on the backend by comparing authenticated UID against listing owner UID
+    const listingRes = await repository.getListing(id, authResult.userId);
+    if (!listingRes) {
+      return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
+    }
+
+    if (listingRes.listing.ownerId === authResult.userId) {
+      return NextResponse.json(
+        { error: 'Action not permitted: You cannot express interest in your own listing.' },
+        { status: 403 }
+      );
+    }
+
     const request = await repository.createListingRequest({
       listingId: id,
       requesterId: authResult.userId,
-      requesterDisplayName: authResult.email?.split('@')[0] || 'Community Member',
+      requesterDisplayName: authResult.displayName || authResult.email?.split('@')[0] || 'Community Member',
       message: parsed.message
     });
 

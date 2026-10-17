@@ -10,6 +10,7 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
   isAuthenticated: boolean;
   userId?: string;
   email?: string;
+  displayName?: string;
   isDemoUser?: boolean;
 }> {
   const config = getAppConfig();
@@ -36,6 +37,7 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
       isAuthenticated: true,
       userId: uid,
       email: isNeighbour ? 'rohan.mehta@example.com' : 'priya.sharma@example.com',
+      displayName: isNeighbour ? 'Rohan Mehta' : 'Priya Sharma',
       isDemoUser: true
     };
   }
@@ -50,6 +52,7 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
           return {
             isAuthenticated: true,
             userId: 'demo_guest_user',
+            displayName: 'Demo Guest',
             isDemoUser: true
           };
         }
@@ -66,6 +69,7 @@ export async function verifyAuthToken(authHeader?: string | null): Promise<{
       isAuthenticated: true,
       userId: decodedToken.uid,
       email: decodedToken.email,
+      displayName: (decodedToken.name as string) || decodedToken.email?.split('@')[0] || 'Community Member',
       isDemoUser: false
     };
   } catch (error: any) {

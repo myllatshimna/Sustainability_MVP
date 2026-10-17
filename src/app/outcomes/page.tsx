@@ -23,6 +23,12 @@ export default function OutcomesPage() {
 
   useEffect(() => {
     async function loadOutcomes() {
+      if (!token && !user) {
+        setOutcomes([]);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
       try {
         const res = await fetch('/api/outcomes', {
           headers: {
@@ -37,8 +43,16 @@ export default function OutcomesPage() {
         setLoading(false);
       }
     }
+
     loadOutcomes();
-  }, [token]);
+
+    const handler = () => {
+      setOutcomes([]);
+      loadOutcomes();
+    };
+    window.addEventListener('reloop_auth_changed', handler);
+    return () => window.removeEventListener('reloop_auth_changed', handler);
+  }, [token, user?.uid]);
 
   const badgeColors: Record<string, string> = {
     repair: 'bg-blue-100 text-blue-800',
@@ -78,7 +92,7 @@ export default function OutcomesPage() {
       <div className="bg-forest-50 border border-forest-200 rounded-xl p-4 text-xs text-forest-900 flex items-start space-x-2.5">
         <ShieldCheck className="w-4 h-4 text-forest-700 shrink-0 mt-0.5" />
         <div>
-          <strong>Choosing an action vs. Completing it:</strong> Items are only logged here once you have taken action in real life. Each completed record triggers an atomic event in the outbox pipeline.
+          <strong>Choosing an action vs. Completing it:</strong> Items are only logged here once you have taken action in real life. Pending community listings or accepted requests remain in marketplace activity until the physical handover is completed.
         </div>
       </div>
 
@@ -96,16 +110,25 @@ export default function OutcomesPage() {
             <div>
               <h3 className="font-bold text-gray-900 text-base">No completed outcomes yet</h3>
               <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1">
-                Assess an item, choose an action, and click &ldquo;Record Completion&rdquo; to begin building your personal diversion record.
+                Assess an item or complete a community reuse handover to build your verified diversion record. Active community listings and incoming requests are managed in marketplace activity.
               </p>
             </div>
-            <Link
-              href="/assess"
-              className="inline-flex items-center space-x-1.5 bg-forest-700 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-forest-800 transition"
-            >
-              <span>Assess an Item</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <Link
+                href="/assess"
+                className="inline-flex items-center space-x-1.5 bg-forest-700 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-forest-800 transition"
+              >
+                <span>Assess an Item</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+              <Link
+                href="/listings?tab=my_listings"
+                className="inline-flex items-center space-x-1.5 bg-white text-forest-800 border border-warm-200 text-xs font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-warm-50 transition"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>View Marketplace Activity</span>
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">

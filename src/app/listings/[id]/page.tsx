@@ -30,7 +30,7 @@ export default function ListingDetailPage({
 }) {
   const router = useRouter();
   const { id } = use(params);
-  const { user, token, signInWithGoogle, isDemoMode, isAuthenticating } = useAuth();
+  const { user, token, isAuthReady, signInWithGoogle, isDemoMode, isAuthenticating } = useAuth();
 
   const [listing, setListing] = useState<Listing | PublicListing | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -38,6 +38,8 @@ export default function ListingDetailPage({
   const [incomingRequests, setIncomingRequests] = useState<ListingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchSeqRef = React.useRef(0);
 
   // Modals & Submissions
   const [showInterestModal, setShowInterestModal] = useState(false);
@@ -63,30 +65,48 @@ export default function ListingDetailPage({
   const [reportSuccess, setReportSuccess] = useState(false);
 
   const fetchListingDetail = async () => {
+    const seq = ++fetchSeqRef.current;
     try {
       const res = await fetch(`/api/listings/${id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       const data = await res.json();
+      if (seq !== fetchSeqRef.current) return;
+
       if (res.ok) {
         setListing(data.listing);
         setIsOwner(Boolean(data.isOwner));
         setCanRequest(Boolean(data.canRequest));
         if (data.incomingRequests) {
           setIncomingRequests(data.incomingRequests);
+        } else {
+          setIncomingRequests([]);
         }
       } else {
         setError(data.error || 'Failed to load listing');
       }
     } catch (err: any) {
+      if (seq !== fetchSeqRef.current) return;
       setError(err?.message || 'Error loading listing');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchListingDetail();
+  }, [id, token, user?.uid]);
+
+  useEffect(() => {
+    const handler = () => {
+      setIsOwner(false);
+      setIncomingRequests([]);
+      fetchListingDetail();
+    };
+    window.addEventListener('reloop_auth_changed', handler);
+    return () => window.removeEventListener('reloop_auth_changed', handler);
   }, [id, token]);
 
   const handleSendInterest = async (e: React.FormEvent) => {
@@ -251,6 +271,7 @@ export default function ListingDetailPage({
     );
   }
 
+  const effectiveIsOwner = Boolean(isOwner || (user && listing && listing.ownerId === user.uid));
   const isAcceptedRecipient = Boolean(
     user && listing.reservedForUserId && user.uid === listing.reservedForUserId
   );
@@ -359,8 +380,54 @@ export default function ListingDetailPage({
 
           {/* Action Buttons */}
           <div className="pt-4 border-t border-warm-100 space-y-3">
-            {/* If Member (Not Owner) */}
-            {!isOwner && (
+            {(!isAuthReady || isAuthenticating) ? (
+              <div className="p-3 bg-warm-100 rounded-xl text-gray-500 text-xs text-center flex items-center justify-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-forest-700" />
+                <span>Checking account permissions...</span>
+              </div>
+            ) : effectiveIsOwner ? (
+              /* If Owner */
+              <div className="space-y-3">
+                <div className="bg-forest-50 border border-forest-200 text-forest-900 text-xs p-3 rounded-xl flex items-center justify-between">
+                  <span className="font-semibold flex items-center space-x-1.5">
+                    <ShieldCheck className="w-4 h-4 text-forest-700" />
+                    <span>You are the owner of this listing.</span>
+                  </span>
+                  <span className="text-[11px] text-forest-700 font-bold uppercase">{listing.status}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('incoming-requests-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-full bg-forest-800 hover:bg-forest-900 text-white font-bold py-3 rounded-xl transition shadow-sm text-xs flex items-center justify-center space-x-2"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Manage Listing &amp; View Incoming Requests ({incomingRequests.length})</span>
+                </button>
+
+                {listing.status === 'reserved' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowHandoverModal(true)}
+                    className="w-full bg-forest-700 hover:bg-forest-800 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-sm transition"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Complete Handover &amp; Record Outcome</span>
+                  </button>
+                )}
+
+                {listing.status === 'completed' && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs p-3 rounded-xl flex items-center space-x-2 font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>Handover completed and recorded in community reuse analytics!</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* If Member (Not Owner) */
               <>
                 {listing.status === 'available' ? (
                   <button
@@ -393,41 +460,13 @@ export default function ListingDetailPage({
                 )}
               </>
             )}
-
-            {/* If Owner */}
-            {isOwner && (
-              <div className="space-y-3">
-                <div className="bg-forest-50 border border-forest-200 text-forest-900 text-xs p-3 rounded-xl flex items-center justify-between">
-                  <span className="font-semibold">You are the owner of this listing.</span>
-                  <span className="text-[11px] text-forest-700 font-bold uppercase">{listing.status}</span>
-                </div>
-
-                {listing.status === 'reserved' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowHandoverModal(true)}
-                    className="w-full bg-forest-700 hover:bg-forest-800 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-sm transition"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Complete Handover &amp; Record Outcome</span>
-                  </button>
-                )}
-
-                {listing.status === 'completed' && (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs p-3 rounded-xl flex items-center space-x-2 font-medium">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                    <span>Handover completed and recorded in community reuse analytics!</span>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       {/* Owner Dashboard: Incoming Member Requests */}
-      {isOwner && (
-        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-warm-200 shadow-2xs space-y-4">
+      {effectiveIsOwner && (
+        <div id="incoming-requests-section" className="bg-white p-6 sm:p-8 rounded-3xl border border-warm-200 shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-gray-900 flex items-center space-x-2">
               <MessageSquare className="w-4 h-4 text-forest-700" />

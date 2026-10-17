@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
     const maxPriceParam = searchParams.get('maxPrice');
     const status = (searchParams.get('status') || undefined) as any;
     const ownerId = searchParams.get('ownerId') || undefined;
+    const includeTest = searchParams.get('includeTest') === 'true';
 
     const localityLat = latParam ? parseFloat(latParam) : undefined;
     const localityLng = lngParam ? parseFloat(lngParam) : undefined;
@@ -74,7 +75,8 @@ export async function GET(req: NextRequest) {
       isFree,
       maxPrice,
       status,
-      ownerId
+      ownerId,
+      includeTest
     });
 
     return NextResponse.json({
@@ -108,6 +110,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = CreateListingBodySchema.parse(body);
 
+    const isTestUser = Boolean(
+      authResult.email?.endsWith('@reloop.org') ||
+      authResult.email?.toLowerCase().includes('test') ||
+      authResult.userId.toLowerCase().includes('test') ||
+      authResult.isDemoUser
+    );
+
     const listingId = `list_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -135,7 +144,7 @@ export async function POST(req: NextRequest) {
     const newListing = {
       id: listingId,
       ownerId: authResult.userId,
-      ownerDisplayName: authResult.email?.split('@')[0] || 'Community Member',
+      ownerDisplayName: authResult.displayName || authResult.email?.split('@')[0] || 'Community Member',
       title: parsed.title.trim(),
       description: parsed.description.trim(),
       category: parsed.category,
@@ -154,7 +163,7 @@ export async function POST(req: NextRequest) {
       createdAt: now,
       updatedAt: now,
       isDemo: config.DEMO_MODE,
-      isTest: Boolean(parsed.isTest || isTestHeader)
+      isTest: Boolean(parsed.isTest || isTestHeader || isTestUser)
     };
 
     const saved = await repository.saveListing(newListing);

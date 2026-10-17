@@ -22,6 +22,7 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
+  isAuthReady: boolean;
   isAuthenticating: boolean;
   authAction: 'none' | 'signing_in' | 'switching' | 'signing_out';
   authError: string | null;
@@ -35,6 +36,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
+  isAuthReady: false,
   isAuthenticating: false,
   authAction: 'none',
   authError: null,
@@ -73,6 +75,7 @@ let globalPopupInFlight = false;
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
   const [authAction, setAuthAction] = useState<'none' | 'signing_in' | 'switching' | 'signing_out'>('none');
@@ -127,9 +130,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (e) {
             console.error('Failed retrieving Firebase ID token:', e);
           }
+        } else {
+          // If no Firebase user and not in demo mode, clear stale localStorage
+          const localUser = localStorage.getItem('reloop_user');
+          if (localUser) {
+            try {
+              const parsed = JSON.parse(localUser);
+              if (!parsed.isDemo) {
+                setUser(null);
+                setToken(null);
+                localStorage.removeItem('reloop_user');
+                localStorage.removeItem('reloop_token');
+              }
+            } catch {
+              setUser(null);
+              setToken(null);
+            }
+          }
         }
+        setIsAuthReady(true);
       });
       return () => unsubscribe();
+    } else {
+      setIsAuthReady(true);
     }
   }, []);
 
@@ -211,6 +234,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthError(null);
       localStorage.setItem('reloop_user', JSON.stringify(liveUser));
       localStorage.setItem('reloop_token', idToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('reloop_auth_changed', { detail: { uid: liveUser.uid } }));
+      }
     } catch (err: any) {
       if (requestId !== activeRequestIdRef.current) return;
 
@@ -287,6 +313,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthError(null);
       localStorage.setItem('reloop_user', JSON.stringify(liveUser));
       localStorage.setItem('reloop_token', idToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('reloop_auth_changed', { detail: { uid: liveUser.uid } }));
+      }
     } catch (err: any) {
       if (requestId !== activeRequestIdRef.current) return;
 
@@ -336,6 +365,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(null);
       localStorage.removeItem('reloop_user');
       localStorage.removeItem('reloop_token');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('reloop_auth_changed', { detail: { uid: null } }));
+      }
       setIsAuthenticating(false);
       setAuthAction('none');
     }
@@ -346,6 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         token,
+        isAuthReady,
         isAuthenticating,
         authAction,
         authError,

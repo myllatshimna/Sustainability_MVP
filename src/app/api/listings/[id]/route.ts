@@ -25,6 +25,7 @@ export async function GET(
       return NextResponse.json({
         listing: result.listing,
         isOwner: true,
+        canRequest: false,
         incomingRequests
       });
     }
