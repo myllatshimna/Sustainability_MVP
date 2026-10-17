@@ -149,6 +149,7 @@ async function runTwoBrowserMarketplaceVerification() {
   // Step 3: Owner A views listing detail
   console.log('\n--- Step 3: Owner A Inspects Listing Detail & Self-Interest Rejection ---');
   await pageA.goto(`${CLOUD_RUN_BASE_URL}/listings/${listingId}`, { waitUntil: 'networkidle2' });
+  await new Promise(r => setTimeout(r, 1500));
   const contentA = await pageA.content();
 
   const ownerBanner = contentA.includes('You are the owner of this listing');
@@ -180,6 +181,7 @@ async function runTwoBrowserMarketplaceVerification() {
   // Step 4: Requester B views listing and expresses interest
   console.log('\n--- Step 4: Requester B Views Listing & Expresses Interest ---');
   await pageB.goto(`${CLOUD_RUN_BASE_URL}/listings/${listingId}`, { waitUntil: 'networkidle2' });
+  await new Promise(r => setTimeout(r, 1500));
   const contentB = await pageB.content();
 
   const hasExpressInterestB = contentB.includes('Express Interest in this Item');
@@ -207,6 +209,7 @@ async function runTwoBrowserMarketplaceVerification() {
   // Step 5: Owner A views "Incoming Requests" tab and accepts
   console.log('\n--- Step 5: Owner A Views Incoming Requests & Accepts Reservation ---');
   await pageA.goto(`${CLOUD_RUN_BASE_URL}/listings?tab=incoming_requests`, { waitUntil: 'networkidle2' });
+  await new Promise(r => setTimeout(r, 2000));
   const incomingContentA = await pageA.content();
 
   const hasIncomingReq = incomingContentA.includes('Sree Shim') || incomingContentA.includes('pick this up this evening');
@@ -233,6 +236,7 @@ async function runTwoBrowserMarketplaceVerification() {
   // Step 6: Requester B sees accepted status in "My Requests"
   console.log('\n--- Step 6: Requester B Inspects "My Requests" ---');
   await pageB.goto(`${CLOUD_RUN_BASE_URL}/listings?tab=my_requests`, { waitUntil: 'networkidle2' });
+  await new Promise(r => setTimeout(r, 2000));
   const myReqContentB = await pageB.content();
 
   const hasAcceptedBadge = myReqContentB.includes('Accepted / Reserved') || myReqContentB.includes('Reserved For You');
@@ -267,6 +271,7 @@ async function runTwoBrowserMarketplaceVerification() {
   // Step 8: Owner A inspects My Outcomes
   console.log('\n--- Step 8: Owner A Inspects "My Outcomes" ---');
   await pageA.goto(`${CLOUD_RUN_BASE_URL}/outcomes`, { waitUntil: 'networkidle2' });
+  await new Promise(r => setTimeout(r, 2000));
   const outcomesContentA = await pageA.content();
 
   const hasCompletedRecord = outcomesContentA.includes('Completed Records (1)') || outcomesContentA.includes('furniture');

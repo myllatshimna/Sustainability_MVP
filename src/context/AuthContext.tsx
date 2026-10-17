@@ -130,23 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (e) {
             console.error('Failed retrieving Firebase ID token:', e);
           }
-        } else {
-          // If no Firebase user and not in demo mode, clear stale localStorage
-          const localUser = localStorage.getItem('reloop_user');
-          if (localUser) {
-            try {
-              const parsed = JSON.parse(localUser);
-              if (!parsed.isDemo) {
-                setUser(null);
-                setToken(null);
-                localStorage.removeItem('reloop_user');
-                localStorage.removeItem('reloop_token');
-              }
-            } catch {
-              setUser(null);
-              setToken(null);
-            }
-          }
         }
         setIsAuthReady(true);
       });
