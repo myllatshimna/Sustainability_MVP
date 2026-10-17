@@ -30,7 +30,7 @@ export default function ListingDetailPage({
 }) {
   const router = useRouter();
   const { id } = use(params);
-  const { user, token } = useAuth();
+  const { user, token, signInWithGoogle, isDemoMode } = useAuth();
 
   const [listing, setListing] = useState<Listing | PublicListing | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -91,9 +91,19 @@ export default function ListingDetailPage({
 
   const handleSendInterest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token && !user) {
-      setError('Please sign in to request an item.');
-      return;
+    let activeToken = token;
+    if (!activeToken && !user) {
+      if (isDemoMode) {
+        await signInWithGoogle('rohan');
+        activeToken = localStorage.getItem('reloop_token') || 'demo_token';
+      } else {
+        await signInWithGoogle();
+        activeToken = localStorage.getItem('reloop_token');
+        if (!activeToken) {
+          setError('Please sign in with Google to request this item.');
+          return;
+        }
+      }
     }
 
     setIsSubmittingInterest(true);
@@ -102,7 +112,7 @@ export default function ListingDetailPage({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || 'demo_token'}`
+          Authorization: `Bearer ${activeToken || 'demo_token'}`
         },
         body: JSON.stringify({ message: interestMessage })
       });

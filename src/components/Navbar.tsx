@@ -83,14 +83,25 @@ export default function Navbar() {
             <LocalitySelector compact={true} showRadius={false} />
             {user ? (
               <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => switchAccount(user.uid.includes('owner') ? 'rohan' : 'priya')}
-                  title="Switch between Priya (Owner) and Rohan (Neighbour)"
-                  className="text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block"
-                >
-                  {user.displayName || user.email} ⇄
-                </button>
+                {user.isDemo ? (
+                  <button
+                    type="button"
+                    onClick={() => switchAccount(user.uid.includes('owner') ? 'rohan' : 'priya')}
+                    title="Switch between Priya (Owner) and Rohan (Neighbour)"
+                    className="text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block"
+                  >
+                    {user.displayName || user.email} ⇄
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => signInWithGoogle()}
+                    title="Switch Google Account"
+                    className="text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block"
+                  >
+                    {user.displayName || user.email} (Switch)
+                  </button>
+                )}
                 <button
                   onClick={signOut}
                   className="flex items-center space-x-1 text-xs text-gray-600 hover:text-forest-800 bg-warm-200/60 hover:bg-warm-200 px-2.5 py-1.5 rounded-lg transition"

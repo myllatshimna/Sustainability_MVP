@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { getAppConfig } from './config';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Organization, LocalRule, ActionRecommendation } from '@/types/models';
+import { synthesizeConditionAwareRecommendations, MatchingResult } from './matchingEngine';
 
 export const GeminiInitialAssessmentResponseSchema = z.object({
   category: z.string(),
@@ -24,7 +25,9 @@ export const GeminiRecommendationsResponseSchema = z.object({
     rank: z.number(),
     eligibleOrgIds: z.array(z.string()),
     eligibleRuleIds: z.array(z.string()),
-    verificationGuidance: z.string().optional()
+    verificationGuidance: z.string().optional(),
+    matchRationale: z.string().optional(),
+    uncertainties: z.array(z.string()).default([])
   }))
 });
 export type GeminiRecommendationsResponse = z.infer<typeof GeminiRecommendationsResponseSchema>;
@@ -146,9 +149,11 @@ export async function explainActionsWithGemini(params: {
   category: string;
   materials: string[];
   condition: string;
+  locality?: string;
   answers: Record<string, string>;
   eligibleOrganizations: Organization[];
   eligibleLocalRules: LocalRule[];
+  matchingResult?: MatchingResult;
 }): Promise<GeminiRecommendationsResponse> {
   const config = getAppConfig();
 
@@ -174,13 +179,16 @@ export async function explainActionsWithGemini(params: {
     };
 
     const prompt = `You are ReLoop AI generating verified circular actions.
-STRICT GROUNDING RULES:
+STRICT GROUNDING & EVIDENCE RULES:
 1. ONLY cite organization IDs from: ${JSON.stringify(evidenceSummary.organizations.map(o => o.id))}
 2. ONLY cite local rule IDs from: ${JSON.stringify(evidenceSummary.localRules.map(r => r.id))}
 3. NEVER invent organizations, addresses, rules, or environmental statistics.
-4. If no organization matches an action (e.g. repair or donation), do NOT invent one. Instead explain verification steps or that local options are unavailable.
-5. Rank circular actions in hierarchy: repair > reuse > donate > recycle > dispose.
-6. User Item Details:
+4. Ensure recommendation text is strictly supported by cited evidence. Do not claim capabilities (e.g. pickup, repairs) unless documented.
+5. If no organization matches an action (e.g. repair or donation), set eligibleOrgIds: []. Explain verification steps or state that local verified partners are unavailable.
+6. Provide "matchRationale": A clear 1-2 sentence explanation of WHY this option matches this item's confirmed category, material, condition, and locality.
+7. Provide "uncertainties": An array of 1-3 specific uncertainties that remain (e.g. "Physical inspection required at drop-off", "Volunteer specialist availability varies").
+8. Rank circular actions in hierarchy: repair > reuse > donate > recycle > dispose, adjusted for condition suitability (e.g. damaged/scrap items are unsuitable for donation).
+9. User Item Details:
    - Category: ${params.category}
    - Materials: ${params.materials.join(', ')}
    - Condition: ${params.condition}
@@ -208,7 +216,9 @@ ${JSON.stringify(evidenceSummary, null, 2)}`;
                   rank: { type: Type.INTEGER },
                   eligibleOrgIds: { type: Type.ARRAY, items: { type: Type.STRING } },
                   eligibleRuleIds: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  verificationGuidance: { type: Type.STRING }
+                  verificationGuidance: { type: Type.STRING },
+                  matchRationale: { type: Type.STRING },
+                  uncertainties: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
                 required: ['action', 'title', 'description', 'rank', 'eligibleOrgIds', 'eligibleRuleIds']
               }
@@ -222,8 +232,8 @@ ${JSON.stringify(evidenceSummary, null, 2)}`;
     const parsed = JSON.parse(response.text || '{}');
     return GeminiRecommendationsResponseSchema.parse(parsed);
   } catch (error: any) {
-    console.error('Gemini Vertex AI Recommendation Error:', error);
-    throw new Error(`Gemini recommendation synthesis failed: ${error?.message || error}`);
+    console.warn('Gemini live recommendation synthesis warning, using deterministic fallback:', error?.message || error);
+    return getDeterministicDemoRecommendations(params);
   }
 }
 
@@ -300,120 +310,34 @@ function getDeterministicDemoAssessment(description: string): GeminiInitialAsses
  * Deterministic demo recommendations grounded strictly in the eligible organizations and rules
  */
 function getDeterministicDemoRecommendations(params: {
+  city?: string;
   category: string;
+  materials?: string[];
   condition: string;
+  locality?: string;
+  answers?: Record<string, string>;
   eligibleOrganizations: Organization[];
   eligibleLocalRules: LocalRule[];
+  matchingResult?: MatchingResult;
 }): GeminiRecommendationsResponse {
-  const recommendations: ActionRecommendation[] = [];
-  const orgIds = params.eligibleOrganizations.map(o => o.id);
-  const ruleIds = params.eligibleLocalRules.map(r => r.id);
+  const matchingResult: MatchingResult = params.matchingResult || {
+    eligibleOrganizations: params.eligibleOrganizations,
+    nearbyEligibleOrganizations: params.eligibleOrganizations.map(o => ({ ...o, distanceKm: 1.5 })),
+    eligibleLocalRules: params.eligibleLocalRules,
+    availableCommunityListings: [],
+    evidenceFound: params.eligibleOrganizations.length > 0 || params.eligibleLocalRules.length > 0,
+    targetedFollowUpQuestions: []
+  };
 
-  if (params.category === 'furniture') {
-    if (params.condition === 'good_usable' || params.condition === 'new_with_tags') {
-      recommendations.push({
-        action: 'donate',
-        title: 'Donate to Curated Community Thrift or Salvage',
-        description: 'Your furniture is in usable condition and meets local acceptance criteria. Goodwill and RE Store accept verified drop-offs.',
-        rank: 1,
-        eligibleOrgIds: orgIds.filter(id => id.includes('goodwill') || id.includes('re-store')),
-        eligibleRuleIds: ruleIds.filter(id => id.includes('bulky')),
-        verificationGuidance: 'Call ahead for oversized pieces and inspect acceptance guidelines at the drop-off dock.'
-      });
-      recommendations.push({
-        action: 'reuse',
-        title: 'Offer on Neighborhood Exchange',
-        description: 'Extend the item lifecycle by gifting or selling through local neighborhood reuse networks.',
-        rank: 2,
-        eligibleOrgIds: [],
-        eligibleRuleIds: [],
-        verificationGuidance: 'Take clear photos showing any minor blemishes.'
-      });
-    } else {
-      recommendations.push({
-        action: 'repair',
-        title: 'Community Tool Library Repair Session',
-        description: 'Minor wobbles and loose joints can be tightened at Ballard Tool Library Fixers Collective.',
-        rank: 1,
-        eligibleOrgIds: orgIds.filter(id => id.includes('tool_library')),
-        eligibleRuleIds: [],
-        verificationGuidance: 'Check schedule for open workshop hours and volunteer specialist availability.'
-      });
-      recommendations.push({
-        action: 'dispose',
-        title: 'Seattle Public Utilities Bulky Item Collection',
-        description: 'For non-repairable bulky items, schedule official curbside collection or visit the South Transfer Station.',
-        rank: 2,
-        eligibleOrgIds: [],
-        eligibleRuleIds: ruleIds.filter(id => id.includes('bulky')),
-        verificationGuidance: 'Check city disposal fees prior to scheduling transfer.'
-      });
-    }
-  } else if (params.category === 'clothing') {
-    if (params.condition === 'good_usable' || params.condition === 'new_with_tags') {
-      recommendations.push({
-        action: 'donate',
-        title: 'Donate Clean Clothing to Local Partners',
-        description: 'Goodwill and Lifelong Thrift accept clean, wearable apparel to fund community programs.',
-        rank: 1,
-        eligibleOrgIds: orgIds.filter(id => id.includes('goodwill') || id.includes('lifelong')),
-        eligibleRuleIds: [],
-        verificationGuidance: 'Ensure items are freshly washed and bagged before drop-off.'
-      });
-      recommendations.push({
-        action: 'reuse',
-        title: 'Swap or Consign',
-        description: 'Pass along to friends or participate in community clothing swaps.',
-        rank: 2,
-        eligibleOrgIds: [],
-        eligibleRuleIds: [],
-        verificationGuidance: 'Verify that garment is ready for immediate wear.'
-      });
-    } else {
-      recommendations.push({
-        action: 'recycle',
-        title: 'Drop off for King County Threadcycle',
-        description: 'Damaged or torn textiles cannot go into curbside blue bins, but partners accept them for fiber recycling.',
-        rank: 1,
-        eligibleOrgIds: orgIds.filter(id => id.includes('depot') || id.includes('goodwill')),
-        eligibleRuleIds: ruleIds.filter(id => id.includes('textiles')),
-        verificationGuidance: 'Must be dry and clean even if torn.'
-      });
-    }
-  } else {
-    // Packaging
-    recommendations.push({
-      action: 'recycle',
-      title: 'Curbside or Specialty Packaging Recycling',
-      description: 'Follow Seattle municipal sorting rules to prevent contamination.',
-      rank: 1,
-      eligibleOrgIds: orgIds.filter(id => id.includes('depot')),
-      eligibleRuleIds: ruleIds.filter(id => id.includes('cardboard') || id.includes('plastic')),
-      verificationGuidance: 'Ensure cardboard is flattened and rigid plastic containers are clean.'
-    });
-    recommendations.push({
-      action: 'reuse',
-      title: 'Repurpose Box for Shipping or Storage',
-      description: 'Clean sturdy boxes can be used for secondary mailing or home organization.',
-      rank: 2,
-      eligibleOrgIds: [],
-      eligibleRuleIds: [],
-      verificationGuidance: 'Store in dry indoor area.'
-    });
-  }
-
-  // If no evidence matched at all, provide safe verification fallback
-  if (recommendations.length === 0) {
-    recommendations.push({
-      action: 'dispose',
-      title: 'Local Guidance Unavailable',
-      description: 'No verified local rules or curated organizations matched this exact criteria in the pilot directory.',
-      rank: 1,
-      eligibleOrgIds: [],
-      eligibleRuleIds: [],
-      verificationGuidance: 'Verified local guidance unavailable. Contact local municipal waste helpline.'
-    });
-  }
+  const recommendations = synthesizeConditionAwareRecommendations({
+    city: params.city || 'Bengaluru',
+    category: params.category,
+    materials: params.materials || [],
+    condition: params.condition,
+    locality: params.locality,
+    answers: params.answers,
+    matchingResult
+  });
 
   return { recommendations };
 }

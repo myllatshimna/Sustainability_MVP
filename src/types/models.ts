@@ -93,7 +93,9 @@ export const ActionRecommendationSchema = z.object({
   rank: z.number(),
   eligibleOrgIds: z.array(z.string()),
   eligibleRuleIds: z.array(z.string()),
-  verificationGuidance: z.string().optional()
+  verificationGuidance: z.string().optional(),
+  matchRationale: z.string().optional(),
+  uncertainties: z.array(z.string()).default([])
 });
 export type ActionRecommendation = z.infer<typeof ActionRecommendationSchema>;
 

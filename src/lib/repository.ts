@@ -117,26 +117,56 @@ class RepositoryService {
   private pubsub: PubSub | null = null;
 
   constructor() {
+    this.getFirestore();
+    this.getPubSub();
+  }
+
+  public getFirestore(): Firestore | null {
+    if (this.firestore) return this.firestore;
     const config = getAppConfig();
-    if (!config.DEMO_MODE && config.GOOGLE_CLOUD_PROJECT) {
+    const projectId = config.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || config.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    if (!config.DEMO_MODE && projectId) {
       try {
         this.firestore = new Firestore({
-          projectId: config.GOOGLE_CLOUD_PROJECT,
+          projectId,
           ignoreUndefinedProperties: true
         });
       } catch (e) {
         console.warn('Firestore initialization failed:', e);
         this.firestore = null;
       }
+    }
+    return this.firestore;
+  }
 
+  public getPubSub(): PubSub | null {
+    if (this.pubsub) return this.pubsub;
+    const config = getAppConfig();
+    const projectId = config.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || config.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    if (!config.DEMO_MODE && projectId) {
       try {
         this.pubsub = new PubSub({
-          projectId: config.GOOGLE_CLOUD_PROJECT
+          projectId
         });
       } catch (e) {
         console.warn('PubSub initialization failed:', e);
         this.pubsub = null;
       }
+    }
+    return this.pubsub;
+  }
+
+  private isDemoMode(): boolean {
+    const config = getAppConfig();
+    return Boolean(config.DEMO_MODE);
+  }
+
+  private assertLiveFirestore(): void {
+    const db = this.getFirestore();
+    if (!db && !this.isDemoMode()) {
+      throw new Error(
+        'Live Configuration Error: Cloud Firestore is unconfigured. Set GOOGLE_CLOUD_PROJECT or FIREBASE_PROJECT_ID in .env.local with valid credentials, or enable DEMO_MODE=true.'
+      );
     }
   }
 
@@ -162,18 +192,18 @@ class RepositoryService {
 
   // --- Directory & Local Rules ---
   async getOrganizations(city?: string): Promise<Organization[]> {
-    const config = getAppConfig();
     const isBlr = !city || isBengaluruCity(city);
     const isSea = city && city.trim().toLowerCase() === 'seattle';
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       if (isBlr) return DEMO_BENGALURU_ORGANIZATIONS;
       if (isSea) return DEMO_ORGANIZATIONS;
       return []; // Strict isolation: Unknown city has no verified organizations
     }
 
     try {
-      let query = this.firestore.collection('organizations') as FirebaseFirestore.Query;
+      let query = db.collection('organizations') as FirebaseFirestore.Query;
       if (city) {
         query = query.where('city', '==', isBlr ? 'Bengaluru' : city);
       }
@@ -193,18 +223,18 @@ class RepositoryService {
   }
 
   async getLocalRules(city?: string): Promise<LocalRule[]> {
-    const config = getAppConfig();
     const isBlr = !city || isBengaluruCity(city);
     const isSea = city && city.trim().toLowerCase() === 'seattle';
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       if (isBlr) return DEMO_BENGALURU_LOCAL_RULES;
       if (isSea) return DEMO_LOCAL_RULES;
       return []; // Strict isolation: Unknown city has no verified rules
     }
 
     try {
-      let query = this.firestore.collection('local_rules') as FirebaseFirestore.Query;
+      let query = db.collection('local_rules') as FirebaseFirestore.Query;
       if (city) {
         query = query.where('city', '==', isBlr ? 'Bengaluru' : city);
       }
@@ -225,19 +255,20 @@ class RepositoryService {
 
   // --- Assessments ---
   async saveAssessment(assessment: Assessment): Promise<void> {
-    const config = getAppConfig();
-    if (config.DEMO_MODE || !this.firestore) {
+    this.assertLiveFirestore();
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       this.demoAssessments.set(assessment.id, assessment);
       writeJsonFile(getDemoFilePath('assessments.json'), this.demoAssessments);
       return;
     }
 
-    await this.firestore.collection('assessments').doc(assessment.id).set(assessment);
+    await db.collection('assessments').doc(assessment.id).set(assessment);
   }
 
   async getAssessment(id: string, userId?: string): Promise<Assessment | null> {
-    const config = getAppConfig();
-    if (config.DEMO_MODE || !this.firestore) {
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       let assessment = this.demoAssessments.get(id);
       if (!assessment) {
         // Re-read file in case another worker process/route wrote it
@@ -257,7 +288,7 @@ class RepositoryService {
       return assessment;
     }
 
-    const doc = await this.firestore.collection('assessments').doc(id).get();
+    const doc = await db.collection('assessments').doc(id).get();
     if (!doc.exists) return null;
     const data = doc.data() as Assessment;
 
@@ -276,7 +307,8 @@ class RepositoryService {
    * to guarantee stable event IDs across retries.
    */
   async saveOutcomeWithOutbox(outcome: Outcome): Promise<{ outcome: Outcome; event: AnalyticsEvent }> {
-    const config = getAppConfig();
+    this.assertLiveFirestore();
+    const db = this.getFirestore();
     const eventId = `event_outcome_${outcome.id}`;
 
     const analyticsEvent: AnalyticsEvent = {
@@ -293,7 +325,7 @@ class RepositoryService {
       publishStatus: 'pending'
     };
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       this.demoOutcomes.set(outcome.id, outcome);
       this.demoAnalyticsEvents.set(eventId, analyticsEvent);
       writeJsonFile(getDemoFilePath('outcomes.json'), this.demoOutcomes);
@@ -302,10 +334,10 @@ class RepositoryService {
     }
 
     // Atomic transaction in Firestore
-    const outcomeRef = this.firestore.collection('outcomes').doc(outcome.id);
-    const outboxRef = this.firestore.collection('outbox_events').doc(eventId);
+    const outcomeRef = db.collection('outcomes').doc(outcome.id);
+    const outboxRef = db.collection('outbox_events').doc(eventId);
 
-    await this.firestore.runTransaction(async tx => {
+    await db.runTransaction(async tx => {
       tx.set(outcomeRef, outcome);
       tx.set(outboxRef, analyticsEvent);
     });
@@ -314,8 +346,8 @@ class RepositoryService {
   }
 
   async getUserOutcomes(userId: string): Promise<Outcome[]> {
-    const config = getAppConfig();
-    if (config.DEMO_MODE || !this.firestore) {
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       if (this.demoOutcomes.size === 0) {
         const diskMap = readJsonFile<Outcome>(getDemoFilePath('outcomes.json'));
         for (const [k, v] of diskMap.entries()) {
@@ -325,7 +357,7 @@ class RepositoryService {
       return Array.from(this.demoOutcomes.values()).filter(o => o.userId === userId);
     }
 
-    const snapshot = await this.firestore
+    const snapshot = await db
       .collection('outcomes')
       .where('userId', '==', userId)
       .get();
@@ -340,9 +372,11 @@ class RepositoryService {
    */
   async dispatchOutboxEvents(): Promise<{ processedCount: number; errors: string[] }> {
     const config = getAppConfig();
+    const db = this.getFirestore();
+    const pubsub = this.getPubSub();
     const errors: string[] = [];
 
-    if (config.DEMO_MODE || !this.firestore || !this.pubsub) {
+    if (this.isDemoMode() || !db || !pubsub) {
       // In demo mode, mark pending demo events as published in local store
       let count = 0;
       for (const [id, evt] of this.demoAnalyticsEvents.entries()) {
@@ -355,8 +389,8 @@ class RepositoryService {
       return { processedCount: count, errors: [] };
     }
 
-    const topic = this.pubsub.topic(config.PUBSUB_TOPIC_NAME);
-    const pendingSnapshot = await this.firestore
+    const topic = pubsub.topic(config.PUBSUB_TOPIC_NAME);
+    const pendingSnapshot = await db
       .collection('outbox_events')
       .where('publishStatus', '==', 'pending')
       .limit(50)
@@ -412,6 +446,13 @@ class RepositoryService {
   }> {
     let outcomes: Outcome[] = [];
 
+    if (this.demoOutcomes.size === 0) {
+      const diskMap = readJsonFile<Outcome>(getDemoFilePath('outcomes.json'));
+      for (const [k, v] of diskMap.entries()) {
+        this.demoOutcomes.set(k, v);
+      }
+    }
+
     if (isDemoMode) {
       // Include seeded sample outcomes if demo store is sparse
       const existing = Array.from(this.demoOutcomes.values()).filter(o => o.isDemo);
@@ -421,10 +462,11 @@ class RepositoryService {
         outcomes = existing;
       }
     } else {
-      if (!this.firestore) {
-        outcomes = [];
+      const db = this.getFirestore();
+      if (!db) {
+        outcomes = Array.from(this.demoOutcomes.values()).filter(o => !o.isDemo);
       } else {
-        const snapshot = await this.firestore
+        const snapshot = await db
           .collection('outcomes')
           .where('isDemo', '==', false)
           .get();
@@ -470,14 +512,15 @@ class RepositoryService {
 
   // --- Real Community Listings (Phases 5 & 6) ---
   async saveListing(listing: Listing): Promise<Listing> {
-    const config = getAppConfig();
-    if (config.DEMO_MODE || !this.firestore) {
+    this.assertLiveFirestore();
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       this.demoListings.set(listing.id, listing);
       writeJsonFile(getDemoFilePath('listings.json'), this.demoListings);
       return listing;
     }
 
-    await this.firestore.collection('listings').doc(listing.id).set(listing);
+    await db.collection('listings').doc(listing.id).set(listing);
     return listing;
   }
 
@@ -485,10 +528,10 @@ class RepositoryService {
     id: string,
     viewerUserId?: string
   ): Promise<{ listing: Listing; isOwner: boolean; publicListing: PublicListing } | null> {
-    const config = getAppConfig();
     let listing: Listing | null = null;
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       listing = this.demoListings.get(id) || null;
       if (!listing) {
         const diskMap = readJsonFile<Listing>(getDemoFilePath('listings.json'));
@@ -496,7 +539,7 @@ class RepositoryService {
         if (listing) this.demoListings.set(id, listing);
       }
     } else {
-      const doc = await this.firestore.collection('listings').doc(id).get();
+      const doc = await db.collection('listings').doc(id).get();
       if (doc.exists) {
         listing = doc.data() as Listing;
       }
@@ -525,10 +568,10 @@ class RepositoryService {
     status?: ListingStatus;
     ownerId?: string;
   }): Promise<PublicListing[]> {
-    const config = getAppConfig();
     let allListings: Listing[] = [];
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       if (this.demoListings.size === 0) {
         const diskMap = readJsonFile<Listing>(getDemoFilePath('listings.json'));
         for (const [k, v] of diskMap.entries()) {
@@ -537,7 +580,7 @@ class RepositoryService {
       }
       allListings = Array.from(this.demoListings.values());
     } else {
-      let query = this.firestore.collection('listings') as FirebaseFirestore.Query;
+      let query = db.collection('listings') as FirebaseFirestore.Query;
       if (filters.status) {
         query = query.where('status', '==', filters.status);
       }
@@ -659,13 +702,14 @@ class RepositoryService {
       isDemo: config.DEMO_MODE
     };
 
-    if (config.DEMO_MODE || !this.firestore) {
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       this.demoListingRequests.set(requestId, request);
       writeJsonFile(getDemoFilePath('requests.json'), this.demoListingRequests);
       return request;
     }
 
-    await this.firestore.collection('listing_requests').doc(requestId).set(request);
+    await db.collection('listing_requests').doc(requestId).set(request);
     return request;
   }
 
@@ -674,8 +718,8 @@ class RepositoryService {
     if (!listingRes) throw new Error('Listing not found');
     if (!listingRes.isOwner) throw new Error('Access denied: Only the listing owner can view incoming requests');
 
-    const config = getAppConfig();
-    if (config.DEMO_MODE || !this.firestore) {
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
       for (const [k, v] of diskMap.entries()) {
         this.demoListingRequests.set(k, v);
@@ -683,7 +727,7 @@ class RepositoryService {
       return Array.from(this.demoListingRequests.values()).filter(r => r.listingId === listingId);
     }
 
-    const snapshot = await this.firestore
+    const snapshot = await db
       .collection('listing_requests')
       .where('listingId', '==', listingId)
       .get();
@@ -691,8 +735,8 @@ class RepositoryService {
   }
 
   async getMySentRequests(userId: string): Promise<ListingRequest[]> {
-    const config = getAppConfig();
-    if (config.DEMO_MODE || !this.firestore) {
+    const db = this.getFirestore();
+    if (this.isDemoMode() || !db) {
       const diskMap = readJsonFile<ListingRequest>(getDemoFilePath('requests.json'));
       for (const [k, v] of diskMap.entries()) {
         this.demoListingRequests.set(k, v);
@@ -700,7 +744,7 @@ class RepositoryService {
       return Array.from(this.demoListingRequests.values()).filter(r => r.requesterId === userId);
     }
 
-    const snapshot = await this.firestore
+    const snapshot = await db
       .collection('listing_requests')
       .where('requesterId', '==', userId)
       .get();
@@ -713,15 +757,16 @@ class RepositoryService {
     action: 'accept' | 'decline' | 'release';
     ownerId: string;
   }): Promise<{ listing: Listing; request: ListingRequest }> {
-    const config = getAppConfig();
+    this.assertLiveFirestore();
     const listingRes = await this.getListing(params.listingId, params.ownerId);
     if (!listingRes) throw new Error('Listing not found');
     if (!listingRes.isOwner) throw new Error('Access denied: Only the listing owner can accept/decline requests');
 
     const listing = listingRes.listing;
     let request: ListingRequest | null = null;
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       request = this.demoListingRequests.get(params.requestId) || null;
       if (!request) throw new Error('Request not found');
 
@@ -754,10 +799,10 @@ class RepositoryService {
     }
 
     // Live mode Firestore transaction: prevents race conditions & concurrent double reservation
-    const listingRef = this.firestore.collection('listings').doc(listing.id);
-    const requestRef = this.firestore.collection('listing_requests').doc(params.requestId);
+    const listingRef = db.collection('listings').doc(listing.id);
+    const requestRef = db.collection('listing_requests').doc(params.requestId);
 
-    const result = await this.firestore.runTransaction(async tx => {
+    const result = await db.runTransaction(async tx => {
       const listingDoc = await tx.get(listingRef);
       const requestDoc = await tx.get(requestRef);
 
@@ -864,8 +909,9 @@ class RepositoryService {
     // Fetch existing outcome and record confirmation event
     const outcomeId = `out_listing_${listing.id}_reuse`;
     let outcome: Outcome;
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       outcome = this.demoOutcomes.get(outcomeId) || {
         id: outcomeId,
         assessmentId: `as_listing_${listing.id}`,
@@ -905,7 +951,7 @@ class RepositoryService {
       return { listing, outcome };
     }
 
-    const outcomeRef = this.firestore.collection('outcomes').doc(outcomeId);
+    const outcomeRef = db.collection('outcomes').doc(outcomeId);
     const doc = await outcomeRef.get();
     if (doc.exists) {
       outcome = doc.data() as Outcome;
@@ -945,7 +991,7 @@ class RepositoryService {
       isDemo: false,
       publishStatus: 'pending'
     };
-    await this.firestore.collection('outbox_events').doc(confEventId).set(confirmationEvent);
+    await db.collection('outbox_events').doc(confEventId).set(confirmationEvent);
 
     return { listing, outcome };
   }
@@ -956,7 +1002,6 @@ class RepositoryService {
     reporterUserId: string,
     reason: string
   ): Promise<{ success: boolean; reportId: string }> {
-    const config = getAppConfig();
     const reportId = `rep_${Date.now()}_${listingId.slice(0, 8)}`;
     const reportRecord = {
       id: reportId,
@@ -966,14 +1011,15 @@ class RepositoryService {
       createdAt: new Date().toISOString(),
       status: 'pending_moderation'
     };
+    const db = this.getFirestore();
 
-    if (config.DEMO_MODE || !this.firestore) {
+    if (this.isDemoMode() || !db) {
       // Record locally
       console.log('Listing moderation report recorded:', reportRecord);
       return { success: true, reportId };
     }
 
-    await this.firestore.collection('listing_reports').doc(reportId).set(reportRecord);
+    await db.collection('listing_reports').doc(reportId).set(reportRecord);
     return { success: true, reportId };
   }
 }

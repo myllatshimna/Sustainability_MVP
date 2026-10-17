@@ -10,6 +10,7 @@ export async function GET() {
     defaultCity: 'Bengaluru',
     geminiModel: config.GEMINI_MODEL_ID,
     hasMapsKey: Boolean(config.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
-    hasFirebaseKey: Boolean(config.NEXT_PUBLIC_FIREBASE_API_KEY)
+    hasFirebaseKey: Boolean(config.NEXT_PUBLIC_FIREBASE_API_KEY),
+    hasStorageBucket: Boolean(config.GCS_BUCKET_NAME)
   });
 }

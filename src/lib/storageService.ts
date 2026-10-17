@@ -78,6 +78,11 @@ class CloudStorageService {
     const config = getAppConfig();
 
     if (config.DEMO_MODE || !this.storage || !config.GCS_BUCKET_NAME) {
+      if (!config.DEMO_MODE && process.env.NODE_ENV !== 'test') {
+        throw new Error(
+          'Live Configuration Error: Cloud Storage bucket is unconfigured. Set GCS_BUCKET_NAME in your environment to enable live file uploads, or enable DEMO_MODE=true.'
+        );
+      }
       // Demo Mode / In-memory storage
       this.demoMemoryStore.set(destinationPath, { buffer, mimeType });
       const base64 = buffer.toString('base64');

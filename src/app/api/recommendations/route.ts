@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { repository } from '@/lib/repository';
-import { matchEligibleEvidence, validateEvidenceCitations } from '@/lib/matchingEngine';
+import { matchEligibleEvidence, validateEvidenceClaimSupport } from '@/lib/matchingEngine';
 import { explainActionsWithGemini } from '@/lib/geminiService';
 import { getAppConfig } from '@/lib/config';
 
@@ -29,47 +29,59 @@ export async function POST(req: NextRequest) {
     const organizations = await repository.getOrganizations(assessment.city);
     const rules = await repository.getLocalRules(assessment.city);
 
-    // 1. Deterministic Backend Evidence Matching
+    // Fetch available community listings within user search radius
+    const activeListings = await repository.getListings({
+      status: 'available',
+      category: parsed.confirmedCategory,
+      localityLat: assessment.latitude,
+      localityLng: assessment.longitude,
+      maxDistanceKm: assessment.radiusKm ?? 20
+    });
+
+    // 1. Condition-Aware Deterministic Backend Evidence & Nearby Matching
     const matchingResult = matchEligibleEvidence(
       {
         city: assessment.city,
         category: parsed.confirmedCategory,
         materials: parsed.confirmedMaterials,
-        condition: parsed.confirmedCondition
+        condition: parsed.confirmedCondition,
+        locality: assessment.locality,
+        latitude: assessment.latitude,
+        longitude: assessment.longitude,
+        radiusKm: assessment.radiusKm ?? 5,
+        answers: parsed.answers,
+        communityListings: activeListings
       },
       organizations,
       rules
     );
 
-    // 2. Gemini Explains Eligible Actions grounded in supplied evidence
+    // 2. Gemini Explains Eligible Actions grounded strictly in supplied evidence
     const aiExplanations = await explainActionsWithGemini({
       city: assessment.city,
       category: parsed.confirmedCategory,
       materials: parsed.confirmedMaterials,
       condition: parsed.confirmedCondition,
+      locality: assessment.locality,
       answers: parsed.answers,
       eligibleOrganizations: matchingResult.eligibleOrganizations,
-      eligibleLocalRules: matchingResult.eligibleLocalRules
+      eligibleLocalRules: matchingResult.eligibleLocalRules,
+      matchingResult
     });
 
-    // 3. Strict Citation Verification:
-    // Reject any citation ID that does not exist in the deterministic eligible evidence set
-    const allCitedOrgIds = aiExplanations.recommendations.flatMap(r => r.eligibleOrgIds);
-    const allCitedRuleIds = aiExplanations.recommendations.flatMap(r => r.eligibleRuleIds);
-
-    const citationValidation = validateEvidenceCitations(
-      allCitedOrgIds,
-      allCitedRuleIds,
+    // 3. Strict Citation & Claim Support Verification:
+    // Check that recommendation text is supported by cited evidence, not merely that citation IDs exist
+    const claimValidation = validateEvidenceClaimSupport(
+      aiExplanations.recommendations,
       matchingResult.eligibleOrganizations,
-      matchingResult.eligibleLocalRules
+      matchingResult.eligibleLocalRules,
+      {
+        category: parsed.confirmedCategory,
+        condition: parsed.confirmedCondition
+      }
     );
 
-    // Filter each recommendation to keep only verified citations
-    const verifiedRecommendations = aiExplanations.recommendations.map(rec => ({
-      ...rec,
-      eligibleOrgIds: rec.eligibleOrgIds.filter(id => citationValidation.validOrgIds.includes(id)),
-      eligibleRuleIds: rec.eligibleRuleIds.filter(id => citationValidation.validRuleIds.includes(id))
-    }));
+    const verifiedRecommendations = claimValidation.verifiedRecommendations;
 
     // Update assessment
     const updatedAssessment = {
@@ -91,11 +103,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       assessment: updatedAssessment,
       eligibleOrganizations: matchingResult.eligibleOrganizations,
+      nearbyEligibleOrganizations: matchingResult.nearbyEligibleOrganizations,
       eligibleLocalRules: matchingResult.eligibleLocalRules,
+      availableCommunityListings: matchingResult.availableCommunityListings,
       rejectedCitationIds: {
-        orgs: citationValidation.rejectedOrgIds,
-        rules: citationValidation.rejectedRuleIds
-      }
+        orgs: claimValidation.rejectedOrgIds,
+        rules: claimValidation.rejectedRuleIds
+      },
+      unsupportedClaims: claimValidation.unsupportedClaims,
+      targetedFollowUpQuestions: matchingResult.targetedFollowUpQuestions,
+      emptyStateReason: matchingResult.emptyStateReason
     });
   } catch (error: any) {
     console.error('Recommendations API Error:', error);

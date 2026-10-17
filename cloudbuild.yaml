@@ -1,0 +1,33 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_API_KEY=$_NEXT_PUBLIC_FIREBASE_API_KEY'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_PROJECT_ID=$_NEXT_PUBLIC_FIREBASE_PROJECT_ID'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_APP_ID=$_NEXT_PUBLIC_FIREBASE_APP_ID'
+      - '-t'
+      - 'asia-south1-docker.pkg.dev/sustainabilitymvp-ed15e/reloop-repo/reloop-app:latest'
+      - '.'
+
+images:
+  - 'asia-south1-docker.pkg.dev/sustainabilitymvp-ed15e/reloop-repo/reloop-app:latest'
+
+substitutions:
+  _NEXT_PUBLIC_FIREBASE_API_KEY: 'AIzaSyBVE_yRreXYcPAxSdADH04RrMBo4T96UyA'
+  _NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'sustainabilitymvp-ed15e.firebaseapp.com'
+  _NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'sustainabilitymvp-ed15e'
+  _NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'sustainabilitymvp-ed15e.firebasestorage.app'
+  _NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '882475917539'
+  _NEXT_PUBLIC_FIREBASE_APP_ID: '1:882475917539:web:348c8fff2185f6cd5625d6'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

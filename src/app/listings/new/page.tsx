@@ -31,7 +31,7 @@ function CreateListingContent() {
   const searchParams = useSearchParams();
   const assessmentIdParam = searchParams.get('assessmentId');
 
-  const { user, token, signInWithGoogle } = useAuth();
+  const { user, token, signInWithGoogle, isDemoMode } = useAuth();
   const { locality } = useLocality();
 
   // Form State
@@ -138,9 +138,20 @@ function CreateListingContent() {
     try {
       let activeToken = token;
       if (!user || !activeToken) {
-        // Auto-authenticate as Priya Sharma so community listing flow is seamless
-        await signInWithGoogle('priya');
-        activeToken = localStorage.getItem('reloop_token') || 'demo_token_user_owner_indiranagar';
+        if (isDemoMode) {
+          // Auto-authenticate as Priya Sharma in demo mode
+          await signInWithGoogle('priya');
+          activeToken = localStorage.getItem('reloop_token') || 'demo_token_user_owner_indiranagar';
+        } else {
+          // In live mode, prompt real Google Sign-In
+          await signInWithGoogle();
+          activeToken = localStorage.getItem('reloop_token');
+          if (!activeToken) {
+            setError('Please sign in with your Google account to post a community listing.');
+            setIsSubmitting(false);
+            return;
+          }
+        }
       }
 
       const parsedPrice = !isFree && priceInr ? parseFloat(priceInr) : undefined;
@@ -366,7 +377,19 @@ function CreateListingContent() {
 
         {/* Optional Photo */}
         <div className="space-y-2">
-          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Item Photo (Optional)</label>
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Item Photo (Optional)</label>
+            {!isDemoMode && (
+              <span className="text-[11px] text-amber-800 font-medium bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                Cloud Storage Pending (Optional)
+              </span>
+            )}
+          </div>
+          {!isDemoMode && (
+            <p className="text-[11px] text-gray-500">
+              Cloud Storage bucket setup is pending in Stage 2. You can publish your community listing without a photo right now.
+            </p>
+          )}
           {photoPreview ? (
             <div className="space-y-2">
               <img src={photoPreview} alt="Preview" className="h-40 rounded-xl object-contain bg-warm-50 p-2 border border-warm-200" />

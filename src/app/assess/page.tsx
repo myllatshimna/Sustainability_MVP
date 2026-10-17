@@ -42,6 +42,19 @@ function AssessmentContent() {
   const [questions, setQuestions] = useState<Array<{ id: string; question: string; options: string[] }>>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
+  const [hasStorageBucket, setHasStorageBucket] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (typeof data.hasStorageBucket === 'boolean') setHasStorageBucket(data.hasStorageBucket);
+        if (typeof data.isDemoMode === 'boolean') setIsDemoMode(data.isDemoMode);
+      })
+      .catch(() => {});
+  }, []);
+
   // Auto-populate sample walkthrough if requested in URL
   useEffect(() => {
     if (sampleParam === 'furniture') {
@@ -219,48 +232,62 @@ function AssessmentContent() {
               <span className="text-xs text-gray-500">Max 8MB (JPEG, PNG, WebP)</span>
             </div>
 
-            <div className="border-2 border-dashed border-warm-300 rounded-2xl p-6 text-center hover:border-forest-500 transition-colors bg-warm-50/50">
-              {previewUrl ? (
-                <div className="space-y-3">
-                  <img
-                    src={previewUrl}
-                    alt="Item preview"
-                    className="max-h-56 mx-auto rounded-xl object-contain shadow-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFile(null);
-                      setPreviewUrl(null);
-                    }}
-                    className="text-xs text-red-600 hover:text-red-800 font-medium underline"
-                  >
-                    Remove Photo
-                  </button>
+            {!isDemoMode && !hasStorageBucket ? (
+              <div className="border border-amber-200 bg-amber-50/70 rounded-2xl p-5 text-center space-y-2">
+                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+                  <Camera className="w-5 h-5 opacity-70" />
                 </div>
-              ) : (
-                <label className="cursor-pointer block space-y-2">
-                  <div className="w-12 h-12 rounded-full bg-forest-100 text-forest-800 flex items-center justify-center mx-auto">
-                    <Camera className="w-6 h-6" />
+                <p className="text-xs font-semibold text-amber-900">
+                  Cloud Storage Unconfigured (Stage 2 Pending)
+                </p>
+                <p className="text-xs text-amber-800/80 max-w-md mx-auto">
+                  Photo upload is disabled until Cloud Storage bucket is provisioned. Please enter your item details in the <strong>Item Description</strong> field below for live Gemini analysis and recommendations.
+                </p>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-warm-300 rounded-2xl p-6 text-center hover:border-forest-500 transition-colors bg-warm-50/50">
+                {previewUrl ? (
+                  <div className="space-y-3">
+                    <img
+                      src={previewUrl}
+                      alt="Item preview"
+                      className="max-h-56 mx-auto rounded-xl object-contain shadow-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFile(null);
+                        setPreviewUrl(null);
+                      }}
+                      className="text-xs text-red-600 hover:text-red-800 font-medium underline"
+                    >
+                      Remove Photo
+                    </button>
                   </div>
-                  <div>
-                    <span className="text-sm font-semibold text-forest-800 hover:underline">
-                      Upload an image
-                    </span>
-                    <span className="text-sm text-gray-500"> or drag and drop</span>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Photos stored privately in Cloud Storage with 30-day retention policy.
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
-              )}
-            </div>
+                ) : (
+                  <label className="cursor-pointer block space-y-2">
+                    <div className="w-12 h-12 rounded-full bg-forest-100 text-forest-800 flex items-center justify-center mx-auto">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold text-forest-800 hover:underline">
+                        Upload an image
+                      </span>
+                      <span className="text-sm text-gray-500"> or drag and drop</span>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Photos stored privately in Cloud Storage with 30-day retention policy.
+                    </p>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Text Description Card */}

@@ -14,7 +14,8 @@ import {
   Scale, 
   Sparkles, 
   ArrowRight, 
-  Clock 
+  Clock,
+  Info 
 } from 'lucide-react';
 import { ActionRecommendation, Organization, LocalRule, Assessment } from '@/types/models';
 import DirectoryMap from '@/components/DirectoryMap';
@@ -76,8 +77,18 @@ function ResultsContent() {
     try {
       let activeToken = token;
       if (!user || !activeToken) {
-        await signInWithGoogle('priya');
-        activeToken = 'token_user_owner_indiranagar';
+        if (isDemoMode) {
+          await signInWithGoogle('priya');
+          activeToken = 'token_user_owner_indiranagar';
+        } else {
+          await signInWithGoogle();
+          activeToken = localStorage.getItem('reloop_token');
+          if (!activeToken) {
+            setSaveError('Please sign in with Google to record a completed outcome.');
+            setIsRecording(false);
+            return;
+          }
+        }
       }
 
       const parsedWeight = weightKg ? parseFloat(weightKg) : undefined;
@@ -191,8 +202,28 @@ function ResultsContent() {
                 </p>
 
                 {rec.verificationGuidance && (
-                  <div className="text-[11px] bg-white/80 p-2 rounded-lg border border-warm-200 text-gray-700">
+                  <div className="text-[11px] bg-white/80 p-2.5 rounded-xl border border-warm-200 text-gray-700">
                     <strong>Guidance:</strong> {rec.verificationGuidance}
+                  </div>
+                )}
+
+                {rec.matchRationale && (
+                  <div className="text-[11px] bg-forest-50/80 p-2.5 rounded-xl border border-forest-200 text-forest-950">
+                    <strong className="text-forest-800">Why this matches:</strong> {rec.matchRationale}
+                  </div>
+                )}
+
+                {rec.uncertainties && rec.uncertainties.length > 0 && (
+                  <div className="text-[11px] bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-amber-950 space-y-1">
+                    <strong className="text-amber-900 flex items-center space-x-1">
+                      <Clock className="w-3 h-3 text-amber-700 inline" />
+                      <span>What remains uncertain:</span>
+                    </strong>
+                    <ul className="list-disc list-inside space-y-0.5 text-amber-800">
+                      {rec.uncertainties.map((u, i) => (
+                        <li key={i}>{u}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>
@@ -257,10 +288,21 @@ function ResultsContent() {
 
           {/* Curated Organizations & Map Synchronizer */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-1.5">
-              <MapPin className="w-4 h-4 text-forest-700" />
-              <span>Matching Verified Curated Locations ({matchedOrgsForAction.length})</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-1.5">
+                <MapPin className="w-4 h-4 text-forest-700" />
+                <span>Matching Verified Curated Locations ({matchedOrgsForAction.length})</span>
+              </h3>
+              <span className="text-[11px] text-gray-500">Filtered by condition &amp; radius</span>
+            </div>
+
+            {/* Proximity Caution Notice */}
+            <div className="p-3 bg-warm-50 rounded-xl border border-warm-200 text-[11px] text-gray-600 flex items-start space-x-2">
+              <Info className="w-4 h-4 text-forest-700 shrink-0 mt-0.5" />
+              <div>
+                <strong>Proximity is not proof of suitability:</strong> Drop-off centers accept items strictly matching documented criteria. For unverified candidates, contact to confirm acceptance before visiting.
+              </div>
+            </div>
 
             {matchedOrgsForAction.length > 0 ? (
               <>
@@ -294,8 +336,9 @@ function ResultsContent() {
                           )}
                         </div>
                         <p className="text-gray-600 text-xs">{org.address}</p>
-                        <div className="text-[11px] text-gray-500">
-                          <strong>Acceptance:</strong> {org.conditionRequirements.join(', ')}
+                        <div className="text-[11px] bg-white p-2 rounded-lg border border-warm-200 space-y-0.5 text-gray-700">
+                          <div><strong>Accepted Conditions:</strong> {org.conditionRequirements.join(', ')}</div>
+                          <div><strong>Materials:</strong> {org.acceptedMaterials.join(', ') || 'All standard'}</div>
                         </div>
                         <div className="flex items-center justify-between pt-1 border-t border-warm-200 text-[11px]">
                           <a
@@ -315,10 +358,13 @@ function ResultsContent() {
                 </div>
               </>
             ) : (
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                <p className="font-semibold">No direct organization drop-off required for this action.</p>
-                <p className="mt-0.5 text-amber-800">
-                  Follow local guidelines or neighbor reuse channels directly.
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <p className="font-semibold flex items-center space-x-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                  <span>No verified organization drop-offs matched for this specific action &amp; condition.</span>
+                </p>
+                <p className="text-amber-800">
+                  Follow official municipal rules cited above, or offer the item directly to neighbours below.
                 </p>
               </div>
             )}

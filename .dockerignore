@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.github
+.env*
+*.env
+.reloop_demo_data
+scratch
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+src/tests
+vitest.config.ts
+README.md
+Deploy in firebase.docx
