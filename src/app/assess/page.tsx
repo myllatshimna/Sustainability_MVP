@@ -56,15 +56,22 @@ function AssessmentContent() {
 
   const [hasStorageBucket, setHasStorageBucket] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     fetch('/api/config')
       .then(res => res.json())
       .then(data => {
+        if (!isMounted) return;
         if (typeof data.hasStorageBucket === 'boolean') setHasStorageBucket(data.hasStorageBucket);
         if (typeof data.isDemoMode === 'boolean') setIsDemoMode(data.isDemoMode);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (isMounted) setIsConfigLoading(false);
+      });
+    return () => { isMounted = false; };
   }, []);
 
   // Auto-populate sample walkthrough if requested in URL
@@ -412,16 +419,21 @@ function AssessmentContent() {
               <span className="text-xs text-gray-500">Max 8MB (JPEG, PNG, WebP)</span>
             </div>
 
-            {!isDemoMode && !hasStorageBucket ? (
-              <div className="border border-amber-200 bg-amber-50/70 rounded-2xl p-5 text-center space-y-2">
-                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+            {isConfigLoading ? (
+              <div className="p-6 bg-warm-50 rounded-2xl border border-warm-200 text-xs text-gray-500 flex items-center justify-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-forest-700" />
+                <span>Checking photo upload capability...</span>
+              </div>
+            ) : (!isDemoMode && !hasStorageBucket) ? (
+              <div className="border border-warm-200 bg-warm-50/70 rounded-2xl p-5 text-center space-y-2">
+                <div className="w-10 h-10 rounded-full bg-warm-100 text-gray-600 flex items-center justify-center mx-auto">
                   <Camera className="w-5 h-5 opacity-70" />
                 </div>
-                <p className="text-xs font-semibold text-amber-900">
-                  Cloud Storage Unconfigured (Stage 2 Pending)
+                <p className="text-xs font-semibold text-gray-900">
+                  Photo upload temporarily unavailable
                 </p>
-                <p className="text-xs text-amber-800/80 max-w-md mx-auto">
-                  Photo upload is disabled until Cloud Storage bucket is provisioned. Please enter your item details in the <strong>Item Description</strong> field below for live Gemini analysis and recommendations.
+                <p className="text-xs text-gray-600 max-w-md mx-auto">
+                  Please enter your item details in the <strong>Item Description</strong> field below for live analysis and recommendations. You can assess and publish without a photo.
                 </p>
               </div>
             ) : (

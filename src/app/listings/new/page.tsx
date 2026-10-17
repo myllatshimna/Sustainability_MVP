@@ -45,12 +45,37 @@ function CreateListingContent() {
   const [pickupPreference, setPickupPreference] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
+  // Storage and Config capability
+  const [hasStorageBucket, setHasStorageBucket] = useState(false);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+
   // States
   const [isDrafting, setIsDrafting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [isTestListing, setIsTestListing] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (!isMounted) return;
+        if (typeof data.hasStorageBucket === 'boolean') {
+          setHasStorageBucket(data.hasStorageBucket);
+        }
+      })
+      .catch(err => {
+        console.warn('Could not load upload config:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsConfigLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, []);
+
+  const canUpload = isDemoMode || hasStorageBucket;
 
   // Prepopulate from active assessment if available
   useEffect(() => {
@@ -393,18 +418,20 @@ function CreateListingContent() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Item Photo (Optional)</label>
-            {!isDemoMode && (
-              <span className="text-[11px] text-amber-800 font-medium bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                Cloud Storage Pending (Optional)
-              </span>
-            )}
+            <span className="text-[11px] text-gray-400">Max 8MB (JPEG, PNG, WebP)</span>
           </div>
-          {!isDemoMode && (
-            <p className="text-[11px] text-gray-500">
-              Cloud Storage bucket setup is pending in Stage 2. You can publish your community listing without a photo right now.
-            </p>
-          )}
-          {photoPreview ? (
+
+          {isConfigLoading ? (
+            <div className="p-4 bg-warm-50 rounded-2xl border border-warm-200 text-xs text-gray-500 flex items-center justify-center space-x-2">
+              <Loader2 className="w-4 h-4 animate-spin text-forest-700" />
+              <span>Checking photo upload capability...</span>
+            </div>
+          ) : !canUpload ? (
+            <div className="p-3.5 bg-warm-50 border border-warm-200 rounded-xl text-xs text-gray-600 flex items-center space-x-2.5">
+              <Camera className="w-4 h-4 text-gray-400 shrink-0" />
+              <span>Photo upload temporarily unavailable. You can publish without a photo.</span>
+            </div>
+          ) : photoPreview ? (
             <div className="space-y-2">
               <img src={photoPreview} alt="Preview" className="h-40 rounded-xl object-contain bg-warm-50 p-2 border border-warm-200" />
               <button
@@ -420,7 +447,7 @@ function CreateListingContent() {
               <Camera className="w-6 h-6 text-forest-700 mb-1" />
               <span className="text-xs font-semibold text-forest-800">Add a photo</span>
               <span className="text-[11px] text-gray-400">JPEG, PNG or WebP</span>
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoUpload} className="hidden" />
             </label>
           )}
         </div>
