@@ -311,6 +311,12 @@ class RepositoryService {
     const db = this.getFirestore();
     const eventId = `event_outcome_${outcome.id}`;
 
+    const isTest = Boolean(
+      outcome.isTest ||
+      outcome.userId?.toLowerCase().includes('test') ||
+      outcome.id?.toLowerCase().includes('test')
+    );
+
     const analyticsEvent: AnalyticsEvent = {
       eventId,
       schemaVersion: '1.0.0',
@@ -322,6 +328,7 @@ class RepositoryService {
       completedAt: outcome.completedAt,
       selfReportedWeightKg: outcome.selfReportedWeightKg,
       isDemo: outcome.isDemo,
+      isTest,
       publishStatus: 'pending'
     };
 
@@ -479,7 +486,20 @@ class RepositoryService {
     for (const o of outcomes) {
       uniqueMap.set(o.id, o);
     }
-    const deduped = Array.from(uniqueMap.values());
+    const deduped = Array.from(uniqueMap.values()).filter(o => {
+      if (!isDemoMode) {
+        if (o.isDemo || o.isTest) return false;
+        const u = (o.userId || '').toLowerCase();
+        const id = (o.id || '').toLowerCase();
+        if (u.startsWith('test') || u.includes('_test') || u.includes('synthetic') || u.includes('@reloop.org') || u.includes('example.com')) {
+          return false;
+        }
+        if (id.startsWith('test') || id.includes('_test')) {
+          return false;
+        }
+      }
+      return true;
+    });
 
     let totalCompleted = deduped.length;
     const actionsByCategory: Record<string, number> = {};
@@ -699,7 +719,8 @@ class RepositoryService {
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      isDemo: config.DEMO_MODE
+      isDemo: config.DEMO_MODE,
+      isTest: Boolean(listing.isTest || params.requesterId.toLowerCase().includes('test'))
     };
 
     const db = this.getFirestore();
@@ -881,7 +902,8 @@ class RepositoryService {
       locality: listing.localityName,
       completedAt,
       selfReportedWeightKg: params.selfReportedWeightKg,
-      isDemo: listing.isDemo
+      isDemo: listing.isDemo,
+      isTest: Boolean(listing.isTest || listing.ownerId?.toLowerCase().includes('test'))
     };
 
     const outboxResult = await this.saveOutcomeWithOutbox(outcome);

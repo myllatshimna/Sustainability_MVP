@@ -116,7 +116,8 @@ export const AssessmentSchema = z.object({
   recommendations: z.array(ActionRecommendationSchema).default([]),
   recommendationEvidenceIds: RecommendationEvidenceSchema.default({ ruleIds: [], organizationIds: [] }),
   createdAt: z.string(),
-  isDemo: z.boolean().default(false)
+  isDemo: z.boolean().default(false),
+  isTest: z.boolean().default(false).optional()
 });
 export type Assessment = z.infer<typeof AssessmentSchema>;
 
@@ -149,7 +150,8 @@ export const ListingSchema = z.object({
   recipientConfirmedAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  isDemo: z.boolean().default(false)
+  isDemo: z.boolean().default(false),
+  isTest: z.boolean().default(false).optional()
 });
 export type Listing = z.infer<typeof ListingSchema>;
 
@@ -168,7 +170,8 @@ export const ListingRequestSchema = z.object({
   status: z.enum(['pending', 'accepted', 'declined', 'completed']).default('pending'),
   createdAt: z.string(),
   updatedAt: z.string(),
-  isDemo: z.boolean().default(false)
+  isDemo: z.boolean().default(false),
+  isTest: z.boolean().default(false).optional()
 });
 export type ListingRequest = z.infer<typeof ListingRequestSchema>;
 
@@ -186,7 +189,8 @@ export const OutcomeSchema = z.object({
   completedAt: z.string(),
   recipientConfirmedAt: z.string().optional(),
   selfReportedWeightKg: z.number().positive().optional(),
-  isDemo: z.boolean().default(false)
+  isDemo: z.boolean().default(false),
+  isTest: z.boolean().default(false).optional()
 });
 export type Outcome = z.infer<typeof OutcomeSchema>;
 
@@ -204,6 +208,7 @@ export const AnalyticsEventSchema = z.object({
   completedAt: z.string(),
   selfReportedWeightKg: z.number().positive().optional(),
   isDemo: z.boolean().default(false),
+  isTest: z.boolean().default(false).optional(),
   publishedAt: z.string().optional(),
   publishStatus: z.enum(['pending', 'published', 'failed']).default('pending')
 });

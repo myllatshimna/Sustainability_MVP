@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS `reloop_analytics.outcome_events_raw` (
   completedAt TIMESTAMP NOT NULL OPTIONS(description="ISO timestamp when user recorded completion"),
   selfReportedWeightKg FLOAT64 OPTIONS(description="Optional user self-reported weight in kg"),
   isDemo BOOL NOT NULL OPTIONS(description="Flag identifying demo or mock data"),
+  isTest BOOL OPTIONS(description="Flag identifying automated verification/synthetic events"),
   publishedAt TIMESTAMP OPTIONS(description="Timestamp when event was published by outbox worker"),
   ingestedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP() OPTIONS(description="BigQuery ingestion timestamp")
 )
@@ -30,7 +31,7 @@ PARTITION BY DATE(completedAt)
 CLUSTER BY city, category, action;
 
 -- 3. Deduplicated Analytics View
--- Eliminates duplicate event delivery from Pub/Sub and excludes demo records
+-- Eliminates duplicate event delivery from Pub/Sub and excludes demo and test records
 CREATE OR REPLACE VIEW `reloop_analytics.v_deduped_live_outcomes` AS
 WITH ranked_events AS (
   SELECT
@@ -44,6 +45,7 @@ WITH ranked_events AS (
     completedAt,
     selfReportedWeightKg,
     isDemo,
+    isTest,
     publishedAt,
     ingestedAt,
     ROW_NUMBER() OVER(
@@ -53,7 +55,9 @@ WITH ranked_events AS (
   FROM
     `reloop_analytics.outcome_events_raw`
   WHERE
-    isDemo = FALSE  -- Strictly exclude demo/mock events from live metrics
+    isDemo = FALSE 
+    AND (isTest IS NULL OR isTest = FALSE)
+    AND NOT (outcomeId LIKE '%test%')
 )
 SELECT
   eventId,

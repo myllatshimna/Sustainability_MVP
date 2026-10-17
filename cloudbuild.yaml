@@ -22,7 +22,7 @@ images:
   - 'asia-south1-docker.pkg.dev/sustainabilitymvp-ed15e/reloop-repo/reloop-app:latest'
 
 substitutions:
-  _NEXT_PUBLIC_FIREBASE_API_KEY: 'AIzaSyBVE_yRreXYcPAxSdADH04RrMBo4T96UyA'
+  _NEXT_PUBLIC_FIREBASE_API_KEY: 'AIzaSyBVE_yRreXYcPaxSdADH04RrMBo4T96UyA'
   _NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'sustainabilitymvp-ed15e.firebaseapp.com'
   _NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'sustainabilitymvp-ed15e'
   _NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'sustainabilitymvp-ed15e.firebasestorage.app'

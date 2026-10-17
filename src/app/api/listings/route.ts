@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { repository } from '@/lib/repository';
 import { verifyAuthToken } from '@/lib/authVerifier';
 import { getAppConfig } from '@/lib/config';
+import { validateImageUpload, cloudStorageService, generateObjectPath } from '@/lib/storageService';
 import { ListingSchema, ItemCategoryEnum, ItemConditionEnum } from '@/types/models';
 import crypto from 'crypto';
 
@@ -41,7 +42,8 @@ const CreateListingBodySchema = z.object({
   localityPlaceId: z.string().optional(),
   latitude: z.number(),
   longitude: z.number(),
-  pickupPreference: z.string().default('Pickup at locality')
+  pickupPreference: z.string().default('Pickup at locality'),
+  isTest: z.boolean().default(false).optional()
 });
 
 export async function GET(req: NextRequest) {
@@ -89,10 +91,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const uploadedListingPaths: string[] = [];
   try {
     const config = getAppConfig();
     const authHeader = req.headers.get('authorization');
     const authResult = await verifyAuthToken(authHeader);
+    const isTestHeader = req.headers.get('x-is-test') === 'true';
 
     if (!authResult.isAuthenticated || !authResult.userId) {
       return NextResponse.json(
@@ -107,6 +111,27 @@ export async function POST(req: NextRequest) {
     const listingId = `list_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
+    // Process photo uploads to private Cloud Storage with structured naming
+    const processedPhotos: string[] = [];
+    for (const photo of parsed.photos) {
+      if (photo.startsWith('data:image/')) {
+        const match = photo.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+        if (match) {
+          const mime = match[1];
+          const buffer = Buffer.from(match[2], 'base64');
+          const validation = validateImageUpload(buffer, mime);
+          if (validation.isValid && validation.extension) {
+            const objectPath = generateObjectPath('listings', listingId, validation.extension);
+            const uploadRes = await cloudStorageService.uploadPhoto(buffer, objectPath, validation.mimeType!);
+            uploadedListingPaths.push(uploadRes.objectPath);
+            processedPhotos.push(uploadRes.mediaUrl);
+            continue;
+          }
+        }
+      }
+      processedPhotos.push(photo);
+    }
+
     const newListing = {
       id: listingId,
       ownerId: authResult.userId,
@@ -116,7 +141,7 @@ export async function POST(req: NextRequest) {
       category: parsed.category,
       confirmedCondition: parsed.confirmedCondition,
       materials: parsed.materials,
-      photos: parsed.photos,
+      photos: processedPhotos,
       isFree: parsed.isFree,
       priceInr: parsed.isFree ? undefined : parsed.priceInr,
       currency: 'INR' as const,
@@ -128,7 +153,8 @@ export async function POST(req: NextRequest) {
       status: 'available' as const,
       createdAt: now,
       updatedAt: now,
-      isDemo: config.DEMO_MODE
+      isDemo: config.DEMO_MODE,
+      isTest: Boolean(parsed.isTest || isTestHeader)
     };
 
     const saved = await repository.saveListing(newListing);
@@ -138,6 +164,10 @@ export async function POST(req: NextRequest) {
       listing: saved
     });
   } catch (error: any) {
+    // Handle failed database writes: clean up uploaded GCS listing photos
+    if (uploadedListingPaths.length > 0) {
+      await Promise.all(uploadedListingPaths.map(p => cloudStorageService.deletePhoto(p))).catch(() => {});
+    }
     console.error('Create Listing API Error:', error);
     let errorMessage = error?.message || 'Failed to create listing';
     if (error instanceof z.ZodError) {
