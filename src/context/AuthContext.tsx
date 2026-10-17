@@ -46,17 +46,18 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyBVE_yRreXYcPaxSdADH04RrMBo4T96UyA',
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'sustainabilitymvp-ed15e.firebaseapp.com',
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'sustainabilitymvp-ed15e',
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'sustainabilitymvp-ed15e.firebasestorage.app',
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '882475917539',
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:882475917539:web:348c8fff2185f6cd5625d6'
 };
 
 function getClientAuth() {
   if (typeof window === 'undefined') return null;
-  if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) return null;
+  const apiKey = firebaseConfig.apiKey;
+  if (!apiKey) return null;
   try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     return getAuth(app);
@@ -133,10 +134,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = async (accountKey?: 'priya' | 'rohan') => {
-    const auth = getClientAuth();
-
-    // If explicit demo persona selected or Firebase client is unconfigured:
-    if (accountKey || !auth) {
+    // If in demo mode and an explicit demo persona is requested:
+    if (isDemoMode && accountKey) {
       const demoUser: AuthUser =
         accountKey === 'rohan'
           ? {
@@ -166,6 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('reloop_bengaluru_locality', JSON.stringify(targetLocality));
         window.dispatchEvent(new Event('reloop_locality_changed'));
       }
+      return;
+    }
+
+    const auth = getClientAuth();
+    if (!auth) {
+      setAuthError('Authentication service is currently unavailable.');
       return;
     }
 
