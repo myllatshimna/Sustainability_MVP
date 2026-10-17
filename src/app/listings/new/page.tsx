@@ -31,7 +31,7 @@ function CreateListingContent() {
   const searchParams = useSearchParams();
   const assessmentIdParam = searchParams.get('assessmentId');
 
-  const { user, token, signInWithGoogle, isDemoMode } = useAuth();
+  const { user, token, signInWithGoogle, isDemoMode, isAuthenticating } = useAuth();
   const { locality } = useLocality();
 
   // Form State
@@ -127,6 +127,7 @@ function CreateListingContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isAuthenticating) return;
     if (!title.trim() || !description.trim()) {
       setError('Please provide a listing title and description.');
       return;

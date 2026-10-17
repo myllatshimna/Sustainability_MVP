@@ -22,8 +22,12 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
+  isAuthenticating: boolean;
+  authAction: 'none' | 'signing_in' | 'switching' | 'signing_out';
+  authError: string | null;
+  clearAuthError: () => void;
   signInWithGoogle: (accountKey?: 'priya' | 'rohan') => Promise<void>;
-  switchAccount: (accountKey: 'priya' | 'rohan') => Promise<void>;
+  switchAccount: (accountKey?: 'priya' | 'rohan') => Promise<void>;
   signOut: () => Promise<void>;
   isDemoMode: boolean;
 }
@@ -31,6 +35,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
+  isAuthenticating: false,
+  authAction: 'none',
+  authError: null,
+  clearAuthError: () => {},
   signInWithGoogle: async () => {},
   switchAccount: async () => {},
   signOut: async () => {},
@@ -58,10 +66,21 @@ function getClientAuth() {
   }
 }
 
+// Module-level in-flight lock to synchronously guard against immediate overlapping clicks
+let globalPopupInFlight = false;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
+  const [authAction, setAuthAction] = useState<'none' | 'signing_in' | 'switching' | 'signing_out'>('none');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const isAuthenticatingRef = React.useRef<boolean>(false);
+  const activeRequestIdRef = React.useRef<number>(0);
+
+  const clearAuthError = () => setAuthError(null);
 
   useEffect(() => {
     // Fetch live environment configuration from server
@@ -78,11 +97,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedUser = localStorage.getItem('reloop_user');
     const savedToken = localStorage.getItem('reloop_token');
     if (savedUser && savedToken) {
-      setUser(JSON.parse(savedUser));
-      setToken(savedToken);
+      try {
+        setUser(JSON.parse(savedUser));
+        setToken(savedToken);
+      } catch (e) {
+        console.warn('Could not parse stored session:', e);
+      }
     }
 
     // Attach Firebase onAuthStateChanged listener when available
+    // NEVER trigger popups automatically from rendering or auth-state effects
     const auth = getClientAuth();
     if (auth) {
       const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
@@ -145,11 +169,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Synchronous immediate lock to prevent overlapping popup operations
+    if (globalPopupInFlight || isAuthenticatingRef.current) {
+      console.warn('Google Sign-In already in flight; ignoring overlapping request.');
+      return;
+    }
+
+    globalPopupInFlight = true;
+    isAuthenticatingRef.current = true;
+    setIsAuthenticating(true);
+    setAuthAction('signing_in');
+    setAuthError(null);
+    const requestId = ++activeRequestIdRef.current;
+
     // Real Firebase Google Sign-In with popup
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
+
+      // Prevent superseded older requests from overwriting
+      if (requestId !== activeRequestIdRef.current) return;
+
       const fbUser = result.user;
       const idToken = await fbUser.getIdToken();
 
@@ -162,37 +203,154 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(liveUser);
       setToken(idToken);
+      setAuthError(null);
       localStorage.setItem('reloop_user', JSON.stringify(liveUser));
       localStorage.setItem('reloop_token', idToken);
     } catch (err: any) {
-      if (err?.code !== 'auth/popup-closed-by-user') {
-        console.error('Firebase Google Sign-In error:', err);
-        alert(`Google Sign-In error: ${err?.message || 'Authentication failed'}`);
+      if (requestId !== activeRequestIdRef.current) return;
+
+      // Do NOT sign users out or treat cancellation/dismissal as an error
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        console.log('Google Sign-In popup closed or cancelled by user.');
+        return;
+      }
+
+      console.error('Firebase Google Sign-In error:', err);
+      if (err?.code === 'auth/popup-blocked') {
+        setAuthError('Sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
+      } else if (err?.code === 'auth/network-request-failed') {
+        setAuthError('Network error during sign-in. Please check your connection and retry.');
+      } else {
+        setAuthError(err?.message || 'Authentication could not be completed. Please try again.');
+      }
+    } finally {
+      if (requestId === activeRequestIdRef.current) {
+        globalPopupInFlight = false;
+        isAuthenticatingRef.current = false;
+        setIsAuthenticating(false);
+        setAuthAction('none');
       }
     }
   };
 
-  const switchAccount = async (accountKey: 'priya' | 'rohan') => {
-    await signInWithGoogle(accountKey);
+  const switchAccount = async (accountKey?: 'priya' | 'rohan') => {
+    // Demo persona switching:
+    if (isDemoMode || accountKey) {
+      const demoKey = accountKey || (user?.uid.includes('owner') ? 'rohan' : 'priya');
+      await signInWithGoogle(demoKey);
+      return;
+    }
+
+    // Live mode account switching:
+    const auth = getClientAuth();
+    if (!auth) {
+      setAuthError('Authentication service is not configured.');
+      return;
+    }
+
+    if (globalPopupInFlight || isAuthenticatingRef.current) {
+      console.warn('Account switch already in flight; ignoring overlapping request.');
+      return;
+    }
+
+    globalPopupInFlight = true;
+    isAuthenticatingRef.current = true;
+    setIsAuthenticating(true);
+    setAuthAction('switching');
+    setAuthError(null);
+    const requestId = ++activeRequestIdRef.current;
+
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+
+      if (requestId !== activeRequestIdRef.current) return;
+
+      const fbUser = result.user;
+      const idToken = await fbUser.getIdToken();
+
+      const liveUser: AuthUser = {
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Community Member',
+        isDemo: false
+      };
+
+      setUser(liveUser);
+      setToken(idToken);
+      setAuthError(null);
+      localStorage.setItem('reloop_user', JSON.stringify(liveUser));
+      localStorage.setItem('reloop_token', idToken);
+    } catch (err: any) {
+      if (requestId !== activeRequestIdRef.current) return;
+
+      // Crucial: Cancellation must NOT sign out the existing user or clobber session
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        console.log('Account switch cancelled; existing user session preserved.');
+        return;
+      }
+
+      console.error('Firebase account switch error:', err);
+      if (err?.code === 'auth/popup-blocked') {
+        setAuthError('Account switch popup was blocked by your browser. Please allow popups for this site.');
+      } else if (err?.code === 'auth/network-request-failed') {
+        setAuthError('Network error during account switch. Please check your connection and retry.');
+      } else {
+        setAuthError(err?.message || 'Failed to switch account. Please try again.');
+      }
+    } finally {
+      if (requestId === activeRequestIdRef.current) {
+        globalPopupInFlight = false;
+        isAuthenticatingRef.current = false;
+        setIsAuthenticating(false);
+        setAuthAction('none');
+      }
+    }
   };
 
   const signOut = async () => {
-    const auth = getClientAuth();
-    if (auth && auth.currentUser) {
-      try {
-        await fbSignOut(auth);
-      } catch (e) {
-        console.warn('Firebase signout warning:', e);
-      }
+    if (globalPopupInFlight || isAuthenticatingRef.current) {
+      console.warn('Cannot sign out while authentication popup is active.');
+      return;
     }
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('reloop_user');
-    localStorage.removeItem('reloop_token');
+
+    const auth = getClientAuth();
+    setIsAuthenticating(true);
+    setAuthAction('signing_out');
+    setAuthError(null);
+
+    try {
+      if (auth && auth.currentUser) {
+        await fbSignOut(auth);
+      }
+    } catch (e) {
+      console.warn('Firebase signout warning:', e);
+    } finally {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('reloop_user');
+      localStorage.removeItem('reloop_token');
+      setIsAuthenticating(false);
+      setAuthAction('none');
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, signInWithGoogle, switchAccount, signOut, isDemoMode }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isAuthenticating,
+        authAction,
+        authError,
+        clearAuthError,
+        signInWithGoogle,
+        switchAccount,
+        signOut,
+        isDemoMode
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -25,7 +25,7 @@ function ResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assessmentId = searchParams.get('id');
-  const { user, token, signInWithGoogle, isDemoMode } = useAuth();
+  const { user, token, signInWithGoogle, isDemoMode, isAuthenticating } = useAuth();
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [eligibleOrgs, setEligibleOrgs] = useState<Organization[]>([]);
@@ -70,7 +70,7 @@ function ResultsContent() {
   }
 
   const handleRecordCompletion = async () => {
-    if (!selectedAction) return;
+    if (!selectedAction || isRecording || isAuthenticating) return;
     setIsRecording(true);
     setSaveError(null);
 

@@ -30,7 +30,7 @@ export default function ListingDetailPage({
 }) {
   const router = useRouter();
   const { id } = use(params);
-  const { user, token, signInWithGoogle, isDemoMode } = useAuth();
+  const { user, token, signInWithGoogle, isDemoMode, isAuthenticating } = useAuth();
 
   const [listing, setListing] = useState<Listing | PublicListing | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -91,6 +91,7 @@ export default function ListingDetailPage({
 
   const handleSendInterest = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAuthenticating || isSubmittingInterest) return;
     let activeToken = token;
     if (!activeToken && !user) {
       if (isDemoMode) {

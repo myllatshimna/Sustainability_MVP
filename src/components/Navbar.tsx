@@ -18,7 +18,17 @@ import LocalitySelector from './LocalitySelector';
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { user, signInWithGoogle, switchAccount, signOut, isDemoMode } = useAuth();
+  const {
+    user,
+    signInWithGoogle,
+    switchAccount,
+    signOut,
+    isDemoMode,
+    isAuthenticating,
+    authAction,
+    authError,
+    clearAuthError
+  } = useAuth();
 
   const navItems = [
     { name: 'Assess Item', href: '/assess', icon: Sparkles },
@@ -38,6 +48,24 @@ export default function Navbar() {
             <span>Demo Mode — Sample Data (Bengaluru Pilot City)</span>
           </div>
           <span className="text-amber-800 text-[11px] hidden sm:inline">Vertex AI & Places Live Mode Ready</span>
+        </div>
+      )}
+
+      {/* Inline Auth Notification Banner */}
+      {authError && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs px-4 py-2 flex items-center justify-between font-medium transition-all">
+          <div className="flex items-center space-x-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+            <span>{authError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={clearAuthError}
+            className="text-amber-700 hover:text-amber-950 font-bold ml-3 text-sm px-1.5 py-0.5 rounded transition"
+            aria-label="Dismiss notification"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -87,36 +115,58 @@ export default function Navbar() {
                   <button
                     type="button"
                     onClick={() => switchAccount(user.uid.includes('owner') ? 'rohan' : 'priya')}
+                    disabled={isAuthenticating}
                     title="Switch between Priya (Owner) and Rohan (Neighbour)"
-                    className="text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block"
+                    className={`text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block ${
+                      isAuthenticating ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
                   >
                     {user.displayName || user.email} ⇄
                   </button>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => signInWithGoogle()}
+                    onClick={() => switchAccount()}
+                    disabled={isAuthenticating}
                     title="Switch Google Account"
-                    className="text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block"
+                    className={`text-[11px] font-semibold bg-forest-100 text-forest-900 px-2 py-1 rounded-lg hover:bg-forest-200 transition hidden sm:inline-block ${
+                      isAuthenticating ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
                   >
-                    {user.displayName || user.email} (Switch)
+                    {isAuthenticating && authAction === 'switching'
+                      ? 'Switching...'
+                      : `${user.displayName || user.email} (Switch)`}
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={signOut}
-                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-forest-800 bg-warm-200/60 hover:bg-warm-200 px-2.5 py-1.5 rounded-lg transition"
+                  disabled={isAuthenticating}
+                  className={`flex items-center space-x-1 text-xs text-gray-600 hover:text-forest-800 bg-warm-200/60 hover:bg-warm-200 px-2.5 py-1.5 rounded-lg transition ${
+                    isAuthenticating ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
+                  <span>{isAuthenticating && authAction === 'signing_out' ? 'Signing Out...' : 'Sign Out'}</span>
                 </button>
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => signInWithGoogle()}
-                className="flex items-center space-x-1.5 text-xs font-medium text-white bg-forest-700 hover:bg-forest-800 px-3.5 py-2 rounded-lg transition shadow-sm"
+                disabled={isAuthenticating}
+                className={`flex items-center space-x-1.5 text-xs font-medium text-white bg-forest-700 hover:bg-forest-800 px-3.5 py-2 rounded-lg transition shadow-sm ${
+                  isAuthenticating ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Google Sign-In</span>
+                {isAuthenticating && authAction === 'signing_in' ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <LogIn className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {isAuthenticating && authAction === 'signing_in' ? 'Signing In...' : 'Google Sign-In'}
+                </span>
               </button>
             )}
           </div>
