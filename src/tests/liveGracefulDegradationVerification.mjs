@@ -174,11 +174,16 @@ async function runGracefulDegradationLiveVerification() {
 
   await page.goto(`${CLOUD_RUN_BASE_URL}/results?id=${manualAssessData.assessmentId}`, { waitUntil: 'networkidle2' });
   const resultsContent = await page.content();
-  const hasManualBadge = resultsContent.includes('Based on your confirmed details and local rules');
-  const hasManualNotice = resultsContent.includes('Photo was not analyzed by AI');
+  const hasManualBadge = resultsContent.includes('Manual assessment');
+  const hasExpandableDetail = resultsContent.includes('How this was assessed') &&
+    resultsContent.includes('Uses your confirmed details and local rules. The photo was not analyzed by AI.');
+  const hasRecommendedOptions = resultsContent.includes('Recommended Options');
+  const hasLargeYellowBanner = resultsContent.includes('bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start');
 
-  console.log(`  ✓ "Based on your confirmed details and local rules" badge: ${hasManualBadge}`);
-  console.log(`  ✓ "Photo was not analyzed by AI" disclaimer: ${hasManualNotice}`);
+  console.log(`  ✓ Compact "Manual assessment" badge visible: ${hasManualBadge}`);
+  console.log(`  ✓ Accessible "How this was assessed" expandable detail: ${hasExpandableDetail}`);
+  console.log(`  ✓ "Recommended Options" heading rendered: ${hasRecommendedOptions}`);
+  console.log(`  ✓ Large yellow banner removed: ${!hasLargeYellowBanner}`);
 
   const manualResultsScreenshot = path.join(ARTIFACTS_DIR, 'graceful_degradation_manual_results.png');
   await page.screenshot({ path: manualResultsScreenshot, fullPage: true });

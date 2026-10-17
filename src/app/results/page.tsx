@@ -151,6 +151,19 @@ function ResultsContent() {
     }
   };
 
+  const isExample = isExampleMode || (assessment as any)?.isExample;
+  const isManual = (assessment as any)?.isManual;
+
+  const allRecommendationsVerified =
+    Boolean(assessment.recommendations && assessment.recommendations.length > 0) &&
+    assessment.recommendations.every((rec) => {
+      const hasVerifiedRule = Array.isArray(rec.eligibleRuleIds) && rec.eligibleRuleIds.length > 0;
+      const hasVerifiedOrg = Array.isArray(rec.eligibleOrgIds) && rec.eligibleOrgIds.length > 0;
+      const hasNoUncertainties = !rec.uncertainties || rec.uncertainties.length === 0;
+      const isExplicitlyVerified = (rec as any).isVerified === true;
+      return isExplicitlyVerified || ((hasVerifiedRule || hasVerifiedOrg) && hasNoUncertainties);
+    });
+
   const matchedOrgsForAction = eligibleOrgs.filter((org) =>
     selectedAction?.eligibleOrgIds.includes(org.id)
   );
@@ -191,19 +204,37 @@ function ResultsContent() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-warm-200 pb-5">
         <div>
-          {(assessment as any)?.isManual ? (
-            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-amber-900 bg-amber-100 px-3 py-1 rounded-full mb-1">
-              <Wrench className="w-3.5 h-3.5 text-amber-700" />
-              <span>Based on your confirmed details and local rules</span>
+          {isManual ? (
+            <div className="space-y-1.5 mb-2">
+              <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-amber-900 bg-amber-100 px-3 py-1 rounded-full">
+                <Wrench className="w-3.5 h-3.5 text-amber-700" />
+                <span>Manual assessment</span>
+              </div>
+              <div>
+                <details className="group text-xs inline-block">
+                  <summary className="inline-flex items-center space-x-1 text-forest-700 hover:text-forest-900 cursor-pointer font-medium select-none focus:outline-none focus:underline list-none [&::-webkit-details-marker]:hidden">
+                    <span>How this was assessed</span>
+                    <ChevronRight className="w-3.5 h-3.5 transition-transform group-open:rotate-90 text-forest-600 inline" />
+                  </summary>
+                  <div className="mt-1.5 p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950 max-w-md leading-relaxed">
+                    Uses your confirmed details and local rules. The photo was not analyzed by AI.
+                  </div>
+                </details>
+              </div>
+            </div>
+          ) : isExample ? (
+            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-blue-900 bg-blue-100 px-3 py-1 rounded-full mb-1">
+              <BookOpen className="w-3.5 h-3.5 text-blue-700" />
+              <span>Recorded example</span>
             </div>
           ) : (
             <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-forest-800 bg-forest-100 px-3 py-1 rounded-full mb-1">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Grounded Circular Hierarchy</span>
+              <span>AI assessment</span>
             </div>
           )}
           <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950">
-            Verified Recommendations
+            {allRecommendationsVerified ? 'Verified Recommendations' : 'Recommended Options'}
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Pilot City: <strong>{assessment.city}</strong> &bull; Item:{' '}
@@ -211,16 +242,6 @@ function ResultsContent() {
           </p>
         </div>
       </div>
-
-      {/* Manual Mode Notice Strip */}
-      {(assessment as any)?.isManual && (
-        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start space-x-2.5">
-          <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-          <div>
-            <strong>Manual Assessment:</strong> Photo was not analyzed by AI. Recommendations and priority rankings were synthesized deterministically using verified local BBMP rules and curated Bangalore organizations.
-          </div>
-        </div>
-      )}
 
       {/* Ranked Action Cards */}
       <div className="space-y-4">
@@ -452,7 +473,9 @@ function ResultsContent() {
                 </span>
                 <h4 className="text-base font-bold text-white mt-0.5">Offer to Bengaluru Community</h4>
                 <p className="text-xs text-forest-200 mt-1 leading-relaxed">
-                  Pre-fill this item into a real listing with Gemini to sell or gift to nearby neighbours.
+                  {isManual
+                    ? 'Pre-fill this item into a community listing to sell or gift to nearby neighbours.'
+                    : 'Pre-fill this item into a real listing with Gemini to sell or gift to nearby neighbours.'}
                 </p>
               </div>
               <div className="pt-2">

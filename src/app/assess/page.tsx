@@ -661,7 +661,7 @@ function AssessmentContent() {
                 </>
               ) : (
                 <>
-                  <span>Synthesize Verified Recommendations</span>
+                  <span>Synthesize Recommended Options</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
