@@ -12,6 +12,7 @@ const SaveOutcomeSchema = z.object({
   action: z.enum(['repair', 'reuse', 'donate', 'recycle', 'dispose']),
   city: z.string(),
   selfReportedWeightKg: z.number().positive().optional(),
+  isTest: z.boolean().optional()
 });
 
 export async function POST(req: NextRequest) {
@@ -43,6 +44,14 @@ export async function POST(req: NextRequest) {
       await repository.saveAssessment(existingAssessment);
     }
 
+    const isTest = Boolean(
+      parsed.isTest ||
+      existingAssessment?.isTest ||
+      (existingAssessment as any)?.isExample ||
+      userId.toLowerCase().includes('test') ||
+      userId.toLowerCase().includes('auditor')
+    );
+
     const outcome = {
       id: outcomeId,
       assessmentId: parsed.assessmentId,
@@ -52,7 +61,8 @@ export async function POST(req: NextRequest) {
       city: parsed.city,
       completedAt: new Date().toISOString(),
       selfReportedWeightKg: parsed.selfReportedWeightKg,
-      isDemo: config.DEMO_MODE
+      isDemo: config.DEMO_MODE,
+      isTest
     };
 
     // Save atomically via Outbox pattern in Firestore (or idempotent demo store)

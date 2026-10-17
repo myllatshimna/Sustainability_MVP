@@ -12,7 +12,9 @@ import {
   MapPin, 
   Loader2, 
   ArrowRight,
-  Info
+  Info,
+  BookOpen,
+  Wrench
 } from 'lucide-react';
 import LocalitySelector from '@/components/LocalitySelector';
 import { useLocality } from '@/context/LocalityContext';
@@ -31,6 +33,16 @@ function AssessmentContent() {
   // Loading & Error States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Graceful Degradation & Quota Fallback State
+  const [fallbackAvailable, setFallbackAvailable] = useState(false);
+  const [savedDraft, setSavedDraft] = useState<any>(null);
+  const [retryAfterFormatted, setRetryAfterFormatted] = useState<string | null>(null);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualCategory, setManualCategory] = useState<'furniture' | 'clothing' | 'packaging' | 'household_goods' | 'electronics' | 'other'>('furniture');
+  const [manualCondition, setManualCondition] = useState('good_usable');
+  const [manualMaterials, setManualMaterials] = useState('wood');
+  const [isManualAssessment, setIsManualAssessment] = useState(false);
 
   // Step 2: Assessment Confirmation State
   const [step, setStep] = useState<'input' | 'confirm'>('input');
@@ -84,6 +96,7 @@ function AssessmentContent() {
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    setFallbackAvailable(false);
 
     try {
       const formData = new FormData();
@@ -105,6 +118,13 @@ function AssessmentContent() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.fallbackAvailable) {
+          setFallbackAvailable(true);
+          setSavedDraft(data.savedDraft);
+          setRetryAfterFormatted(data.retryAfterFormatted || null);
+          setErrorMessage(data.error || 'Gemini assessment is temporarily unavailable.');
+          return;
+        }
         throw new Error(data.error || 'Failed to analyze item');
       }
 
@@ -115,6 +135,7 @@ function AssessmentContent() {
       setObservedCondition(obs.condition);
       setObservedNotes(obs.notes);
       setQuestions(data.assessment.questions || []);
+      setIsManualAssessment(false);
 
       // Default answers
       const defaultAns: Record<string, string> = {};
@@ -126,6 +147,63 @@ function AssessmentContent() {
       setStep('confirm');
     } catch (err: any) {
       setErrorMessage(err.message || 'An error occurred during assessment.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleManualAssessmentSubmit = async () => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('city', 'Bengaluru');
+      formData.append('locality', locality.name);
+      formData.append('placeId', locality.placeId);
+      formData.append('latitude', String(locality.latitude));
+      formData.append('longitude', String(locality.longitude));
+      formData.append('radiusKm', String(radiusKm));
+      formData.append('description', description);
+      formData.append('isManual', 'true');
+      formData.append('confirmedCategory', manualCategory);
+      formData.append('confirmedCondition', manualCondition);
+      formData.append('confirmedMaterials', manualMaterials);
+
+      if (savedDraft?.imageObjectPath) {
+        formData.append('existingImageObjectPath', savedDraft.imageObjectPath);
+      } else if (selectedFile) {
+        formData.append('photo', selectedFile);
+      }
+
+      const res = await fetch('/api/assess', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to process manual assessment');
+      }
+
+      setAssessmentId(data.assessmentId);
+      setObservedCategory(manualCategory);
+      setObservedCondition(manualCondition);
+      const parsedMats = manualMaterials.split(',').map((s) => s.trim()).filter(Boolean);
+      setObservedMaterials(parsedMats.length > 0 ? parsedMats : ['mixed']);
+      setObservedNotes(description || 'Manual assessment details based on user confirmation.');
+      setQuestions(data.assessment.questions || []);
+      setIsManualAssessment(true);
+
+      const defaultAns: Record<string, string> = {};
+      (data.assessment.questions || []).forEach((q: any) => {
+        defaultAns[q.id] = q.options[0];
+      });
+      setAnswers(defaultAns);
+
+      setStep('confirm');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to submit manual assessment.');
     } finally {
       setIsSubmitting(false);
     }
@@ -170,18 +248,120 @@ function AssessmentContent() {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Step Header */}
-      <div>
-        <h1 className="text-3xl font-extrabold text-forest-950">
-          {step === 'input' ? 'Item Assessment' : 'Confirm Item Attributes'}
-        </h1>
-        <p className="text-gray-600 text-sm mt-1">
-          {step === 'input'
-            ? 'Provide a photo or describe the unwanted item to begin circular analysis.'
-            : 'Gemini visual assessment separated from confirmed facts. Verify details before local matching.'}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-extrabold text-forest-950">
+            {step === 'input' ? 'Item Assessment' : 'Confirm Item Attributes'}
+          </h1>
+          <p className="text-gray-600 text-sm mt-1">
+            {step === 'input'
+              ? 'Provide a photo or describe the unwanted item to begin circular analysis.'
+              : isManualAssessment
+              ? 'Based on your confirmed details and local rules. Photo was not analyzed by AI.'
+              : 'Gemini visual assessment separated from confirmed facts. Verify details before local matching.'}
+          </p>
+        </div>
+        {step === 'input' && (
+          <button
+            type="button"
+            onClick={() => router.push('/results?example=true')}
+            className="self-start sm:self-center inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl border border-forest-300 bg-forest-50 hover:bg-forest-100 text-forest-800 text-xs font-bold transition shadow-2xs"
+          >
+            <BookOpen className="w-4 h-4 text-forest-700" />
+            <span>Explore an example</span>
+          </button>
+        )}
       </div>
 
-      {errorMessage && (
+      {fallbackAvailable && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-2xl p-5 space-y-4 shadow-sm">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-sm text-amber-900">
+                Gemini Assessment Unavailable {retryAfterFormatted ? `(Daily Quota Limit Reached · Resets ${retryAfterFormatted})` : ''}
+              </p>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Your item description and uploaded photo have been preserved safely. You can proceed immediately using our local verified rules engine.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white/90 p-4 rounded-xl border border-amber-200 space-y-4">
+            <p className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+              Confirm Item Details for Manual Assessment
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="space-y-1">
+                <label className="font-semibold text-gray-700">Category</label>
+                <select
+                  value={manualCategory}
+                  onChange={(e) => setManualCategory(e.target.value as any)}
+                  className="w-full bg-warm-50 border border-warm-300 rounded-lg p-2 font-medium"
+                >
+                  <option value="furniture">Furniture</option>
+                  <option value="clothing">Clothing &amp; Textiles</option>
+                  <option value="packaging">Packaging &amp; Cardboard</option>
+                  <option value="household_goods">Household Goods</option>
+                  <option value="electronics">Electronics</option>
+                  <option value="other">Other / Mixed</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-gray-700">Condition</label>
+                <select
+                  value={manualCondition}
+                  onChange={(e) => setManualCondition(e.target.value)}
+                  className="w-full bg-warm-50 border border-warm-300 rounded-lg p-2 font-medium"
+                >
+                  <option value="good_usable">Good / Usable Condition</option>
+                  <option value="new_with_tags">New / Like New</option>
+                  <option value="minor_repair_needed">Minor Repair Needed (Fixable)</option>
+                  <option value="heavily_damaged">Heavily Damaged / Stained</option>
+                  <option value="broken_scrap">Broken / Parts Only</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-1 text-xs">
+              <label className="font-semibold text-gray-700">Primary Materials</label>
+              <input
+                type="text"
+                value={manualMaterials}
+                onChange={(e) => setManualMaterials(e.target.value)}
+                placeholder="e.g. wood, cotton, cardboard"
+                className="w-full bg-warm-50 border border-warm-300 rounded-lg p-2"
+              />
+              <span className="text-[11px] text-gray-500">Comma-separated values</span>
+            </div>
+
+            <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-900 flex items-center space-x-2">
+              <Info className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>Labelled as: &ldquo;Based on your confirmed details and local rules. Photo was not analyzed by AI.&rdquo;</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleManualAssessmentSubmit}
+              disabled={isSubmitting}
+              className="w-full bg-forest-800 hover:bg-forest-900 disabled:bg-gray-400 text-white font-semibold py-2.5 rounded-xl transition text-xs flex items-center justify-center space-x-1.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Processing Manual Assessment...</span>
+                </>
+              ) : (
+                <>
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>Continue with manual assessment</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {errorMessage && !fallbackAvailable && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm">
           <div className="flex items-start space-x-3">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
@@ -334,19 +514,34 @@ function AssessmentContent() {
 
       {step === 'confirm' && (
         <div className="space-y-6">
-          {/* AI Observation Card */}
-          <div className="bg-forest-50 border border-forest-200 rounded-2xl p-5 space-y-2">
-            <div className="flex items-center space-x-2 text-forest-900 font-semibold text-sm">
-              <Sparkles className="w-4 h-4 text-forest-700" />
-              <span>Gemini Preliminary Visual Observation</span>
+          {/* Observation / Confirmation Card */}
+          {isManualAssessment ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-2">
+              <div className="flex items-center space-x-2 text-amber-900 font-semibold text-sm">
+                <Wrench className="w-4 h-4 text-amber-700" />
+                <span>Based on your confirmed details and local rules</span>
+              </div>
+              <p className="text-sm text-amber-950 font-medium">
+                &ldquo;{observedNotes}&rdquo;
+              </p>
+              <p className="text-xs text-amber-800">
+                Photo was not analyzed by AI. Recommendations will be matched deterministically against verified BBMP municipal rules and curated Bangalore organizations.
+              </p>
             </div>
-            <p className="text-sm text-forest-950 font-medium">
-              &ldquo;{observedNotes}&rdquo;
-            </p>
-            <p className="text-xs text-forest-700">
-              Visual observations are strictly separated from confirmed facts. Please confirm or correct attributes below.
-            </p>
-          </div>
+          ) : (
+            <div className="bg-forest-50 border border-forest-200 rounded-2xl p-5 space-y-2">
+              <div className="flex items-center space-x-2 text-forest-900 font-semibold text-sm">
+                <Sparkles className="w-4 h-4 text-forest-700" />
+                <span>Gemini Preliminary Visual Observation</span>
+              </div>
+              <p className="text-sm text-forest-950 font-medium">
+                &ldquo;{observedNotes}&rdquo;
+              </p>
+              <p className="text-xs text-forest-700">
+                Visual observations are strictly separated from confirmed facts. Please confirm or correct attributes below.
+              </p>
+            </div>
+          )}
 
           {/* Editable Confirmation Form */}
           <div className="bg-white p-6 rounded-2xl border border-warm-200 shadow-2xs space-y-5">

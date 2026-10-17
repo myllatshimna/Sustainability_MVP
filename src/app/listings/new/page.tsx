@@ -49,6 +49,8 @@ function CreateListingContent() {
   const [isDrafting, setIsDrafting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [isTestListing, setIsTestListing] = useState(false);
 
   // Prepopulate from active assessment if available
   useEffect(() => {
@@ -56,32 +58,32 @@ function CreateListingContent() {
       const raw = sessionStorage.getItem('current_assessment');
       if (raw) {
         const assessment = JSON.parse(raw);
-        if (['furniture', 'clothing', 'packaging'].includes(assessment.observedAttributes?.category)) {
-          setCategory(assessment.observedAttributes.category);
-        }
+        const cat = ['furniture', 'clothing', 'packaging'].includes(assessment.observedAttributes?.category)
+          ? assessment.observedAttributes.category
+          : 'furniture';
+        setCategory(cat);
         const cond = normalizeCondition(assessment.confirmedAttributes?.condition || assessment.observedAttributes?.condition);
         setCondition(cond);
-        setMaterials(assessment.confirmedAttributes?.materials || assessment.observedAttributes?.materials || []);
-        setDescription(assessment.userDescription || '');
+        const mats = assessment.confirmedAttributes?.materials || assessment.observedAttributes?.materials || ['wood'];
+        setMaterials(mats);
+        const userNotes = assessment.userDescription || '';
+        setDescription(userNotes || 'Available for community reuse.');
+        setTitle(`${cat.charAt(0).toUpperCase() + cat.slice(1)} (${locality.name})`);
         setPickupPreference(`Doorstep pickup in ${locality.name}, Bengaluru`);
 
-        // Trigger Gemini Draft
-        handleDraftWithGemini({
-          category: assessment.observedAttributes?.category || 'furniture',
-          materials: assessment.confirmedAttributes?.materials || assessment.observedAttributes?.materials || ['wood'],
-          condition: cond,
-          userDescription: assessment.userDescription,
-          localityName: locality.name
-        });
+        if (assessment.isTest || assessment.isExample) {
+          setIsTestListing(true);
+        }
       }
     } catch (e) {
       console.warn('Could not prepopulate from session assessment:', e);
     }
-  }, [assessmentIdParam]);
+  }, [assessmentIdParam, locality.name]);
 
   const handleDraftWithGemini = async (customParams?: any) => {
     setIsDrafting(true);
     setError(null);
+    setDraftNotice(null);
     try {
       const payload = customParams || {
         category,
@@ -99,16 +101,19 @@ function CreateListingContent() {
 
       const draft = await res.json();
       if (res.ok) {
-        setTitle(draft.title || '');
-        setDescription(draft.description || '');
-        setIsFree(draft.isFree);
+        if (draft.title) setTitle(draft.title);
+        if (draft.description) setDescription(draft.description);
+        if (draft.isFree !== undefined) setIsFree(draft.isFree);
         if (!draft.isFree && draft.suggestedPriceInr) {
           setPriceInr(String(draft.suggestedPriceInr));
         }
-        setPickupPreference(draft.pickupPreference || `Pickup in ${locality.name}, Bengaluru`);
+        if (draft.pickupPreference) setPickupPreference(draft.pickupPreference);
+      } else {
+        setDraftNotice('Gemini listing assistant is currently unavailable. You can enter or edit your listing details manually below.');
       }
     } catch (e: any) {
       console.warn('Gemini drafting error:', e);
+      setDraftNotice('Gemini listing assistant is currently unavailable. You can enter or edit your listing details manually below.');
     } finally {
       setIsDrafting(false);
     }
@@ -175,7 +180,8 @@ function CreateListingContent() {
           localityPlaceId: locality.placeId,
           latitude: locality.latitude,
           longitude: locality.longitude,
-          pickupPreference: pickupPreference.trim() || `Pickup in ${locality.name}, Bengaluru`
+          pickupPreference: pickupPreference.trim() || `Pickup in ${locality.name}, Bengaluru`,
+          isTest: isTestListing
         })
       });
 
@@ -221,12 +227,19 @@ function CreateListingContent() {
         </div>
       )}
 
+      {draftNotice && (
+        <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-start space-x-2 text-xs">
+          <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <span>{draftNotice}</span>
+        </div>
+      )}
+
       {/* Gemini AI Assist Banner */}
       <div className="bg-forest-900 text-white rounded-2xl p-5 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-4 h-4 text-emerald-300" />
-            <span className="font-bold text-sm">Gemini Listing Assistant</span>
+            <span className="font-bold text-sm">Gemini Listing Assistant (Optional)</span>
           </div>
           <button
             type="button"
@@ -239,7 +252,7 @@ function CreateListingContent() {
           </button>
         </div>
         <p className="text-xs text-forest-200">
-          Gemini drafts an honest title and description using your confirmed condition and materials. You review and approve before posting.
+          AI drafting is strictly optional. Gemini drafts a suggested title and description from your confirmed details. You can also write or edit details manually below.
         </p>
       </div>
 

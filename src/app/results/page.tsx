@@ -15,16 +15,21 @@ import {
   Sparkles, 
   ArrowRight, 
   Clock,
-  Info 
+  Info,
+  BookOpen,
+  Wrench
 } from 'lucide-react';
 import { ActionRecommendation, Organization, LocalRule, Assessment } from '@/types/models';
 import DirectoryMap from '@/components/DirectoryMap';
 import { useAuth } from '@/context/AuthContext';
+import { RECORDED_EXAMPLE_ASSESSMENT, checkExampleFreshness, ExampleFreshnessReport } from '@/data/recordedExample';
+import { BENGALURU_ORGANIZATIONS, BENGALURU_LOCAL_RULES } from '@/data/bengaluruCurated';
 
 function ResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assessmentId = searchParams.get('id');
+  const isExampleParam = searchParams.get('example') === 'true';
   const { user, token, signInWithGoogle, isDemoMode, isAuthenticating } = useAuth();
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
@@ -32,6 +37,8 @@ function ResultsContent() {
   const [eligibleRules, setEligibleRules] = useState<LocalRule[]>([]);
   const [selectedAction, setSelectedAction] = useState<ActionRecommendation | null>(null);
   const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(undefined);
+  const [freshness, setFreshness] = useState<ExampleFreshnessReport | null>(null);
+  const [isExampleMode, setIsExampleMode] = useState(false);
 
   // Outcome recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -40,6 +47,25 @@ function ResultsContent() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isExampleParam) {
+      setIsExampleMode(true);
+      setAssessment(RECORDED_EXAMPLE_ASSESSMENT);
+      if (RECORDED_EXAMPLE_ASSESSMENT.recommendations.length > 0) {
+        setSelectedAction(RECORDED_EXAMPLE_ASSESSMENT.recommendations[0]);
+      }
+      const rep = checkExampleFreshness(BENGALURU_ORGANIZATIONS, BENGALURU_LOCAL_RULES);
+      setFreshness(rep);
+      const matchedOrgs = BENGALURU_ORGANIZATIONS.filter((o) =>
+        RECORDED_EXAMPLE_ASSESSMENT.recommendationEvidenceIds.organizationIds.includes(o.id)
+      );
+      const matchedRules = BENGALURU_LOCAL_RULES.filter((r) =>
+        RECORDED_EXAMPLE_ASSESSMENT.recommendationEvidenceIds.ruleIds.includes(r.id)
+      );
+      setEligibleOrgs(matchedOrgs);
+      setEligibleRules(matchedRules);
+      return;
+    }
+
     const rawAssessment = sessionStorage.getItem('current_assessment');
     const rawOrgs = sessionStorage.getItem('eligible_orgs');
     const rawRules = sessionStorage.getItem('eligible_rules');
@@ -53,7 +79,7 @@ function ResultsContent() {
     }
     if (rawOrgs) setEligibleOrgs(JSON.parse(rawOrgs));
     if (rawRules) setEligibleRules(JSON.parse(rawRules));
-  }, [assessmentId]);
+  }, [assessmentId, isExampleParam]);
 
   if (!assessment) {
     return (
@@ -92,6 +118,7 @@ function ResultsContent() {
       }
 
       const parsedWeight = weightKg ? parseFloat(weightKg) : undefined;
+      const isTestFlag = Boolean(assessment.isTest || (assessment as any).isExample || isExampleMode);
       const res = await fetch('/api/outcomes', {
         method: 'POST',
         headers: {
@@ -104,6 +131,7 @@ function ResultsContent() {
           action: selectedAction.action,
           city: assessment.city,
           selfReportedWeightKg: parsedWeight && !isNaN(parsedWeight) ? parsedWeight : undefined,
+          isTest: isTestFlag
         }),
       });
 
@@ -133,13 +161,47 @@ function ResultsContent() {
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
+      {/* Recorded Walkthrough Example Banner */}
+      {(isExampleMode || (assessment as any)?.isExample) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 sm:p-5 space-y-2.5 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <span className="font-bold text-sm text-blue-950 flex items-center space-x-2">
+              <BookOpen className="w-4 h-4 text-blue-700 shrink-0" />
+              <span>Recorded Walkthrough Example (Reviewed: October 15, 2026)</span>
+            </span>
+            {freshness && (
+              <span className={`self-start sm:self-center px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+                freshness.isFresh ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}>
+                {freshness.isFresh ? '✓ Evidence Verified Current' : '⚠ Outdated Evidence'}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-blue-900 leading-relaxed">
+            This is a reviewed historical assessment demonstrating ReLoop&apos;s circular matching logic for solid teak furniture. <strong>This is not live Gemini output.</strong> Any interactions or test listings created from this walkthrough are strictly isolated from live community metrics.
+          </p>
+          {freshness && (
+            <div className="text-[11px] bg-blue-100/60 p-2.5 rounded-xl text-blue-950">
+              <strong>Source Freshness Check:</strong> {freshness.details} ({freshness.verifiedOrgCount} verified organizations, {freshness.verifiedRuleCount} BBMP municipal rules verified).
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-warm-200 pb-5">
         <div>
-          <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-forest-800 bg-forest-100 px-3 py-1 rounded-full mb-1">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Grounded Circular Hierarchy</span>
-          </div>
+          {(assessment as any)?.isManual ? (
+            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-amber-900 bg-amber-100 px-3 py-1 rounded-full mb-1">
+              <Wrench className="w-3.5 h-3.5 text-amber-700" />
+              <span>Based on your confirmed details and local rules</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-forest-800 bg-forest-100 px-3 py-1 rounded-full mb-1">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Grounded Circular Hierarchy</span>
+            </div>
+          )}
           <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950">
             Verified Recommendations
           </h1>
@@ -149,6 +211,16 @@ function ResultsContent() {
           </p>
         </div>
       </div>
+
+      {/* Manual Mode Notice Strip */}
+      {(assessment as any)?.isManual && (
+        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start space-x-2.5">
+          <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <div>
+            <strong>Manual Assessment:</strong> Photo was not analyzed by AI. Recommendations and priority rankings were synthesized deterministically using verified local BBMP rules and curated Bangalore organizations.
+          </div>
+        </div>
+      )}
 
       {/* Ranked Action Cards */}
       <div className="space-y-4">

@@ -24,11 +24,13 @@ if (fs.existsSync(envPath)) {
 }
 
 describe('Live Gemini Evaluations — Grounding & Evidence-Based Synthesis', () => {
+  const isOptedIn = process.env.RUN_LIVE_GEMINI === 'true';
   const hasApiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.startsWith('AIza'));
+  const shouldRunLive = isOptedIn && hasApiKey;
 
   it('runs live Gemini 2.5 Flash recommendation synthesis for pristine wooden chair', async () => {
-    if (!hasApiKey) {
-      console.warn('Skipping live Gemini call: No valid GEMINI_API_KEY found.');
+    if (!shouldRunLive) {
+      console.log('Skipping live Gemini model call (set RUN_LIVE_GEMINI=true to opt into live model tests).');
       return;
     }
 
@@ -98,8 +100,8 @@ describe('Live Gemini Evaluations — Grounding & Evidence-Based Synthesis', () 
   }, 30000);
 
   it('runs live Gemini 2.5 Flash synthesis for greasy pizza box with condition constraints', async () => {
-    if (!hasApiKey) {
-      console.warn('Skipping live Gemini call: No valid GEMINI_API_KEY found.');
+    if (!shouldRunLive) {
+      console.log('Skipping live Gemini model call (set RUN_LIVE_GEMINI=true to opt into live model tests).');
       return;
     }
 
@@ -153,8 +155,8 @@ describe('Live Gemini Evaluations — Grounding & Evidence-Based Synthesis', () 
   }, 30000);
 
   it('handles live Gemini synthesis for empty evidence gracefully without hallucinating', async () => {
-    if (!hasApiKey) {
-      console.warn('Skipping live Gemini call: No valid GEMINI_API_KEY found.');
+    if (!shouldRunLive) {
+      console.log('Skipping live Gemini model call (set RUN_LIVE_GEMINI=true to opt into live model tests).');
       return;
     }
 

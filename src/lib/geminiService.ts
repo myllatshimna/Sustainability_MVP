@@ -32,6 +32,126 @@ export const GeminiRecommendationsResponseSchema = z.object({
 });
 export type GeminiRecommendationsResponse = z.infer<typeof GeminiRecommendationsResponseSchema>;
 
+export class GeminiServiceError extends Error {
+  code: 'QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'SERVICE_UNAVAILABLE' | 'TIMEOUT' | 'UNKNOWN';
+  status: number;
+  retryAfterSeconds?: number;
+  retryAfterFormatted?: string;
+  isDailyQuota: boolean;
+
+  constructor(message: string, options?: {
+    code?: 'QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'SERVICE_UNAVAILABLE' | 'TIMEOUT' | 'UNKNOWN';
+    status?: number;
+    retryAfterSeconds?: number;
+    retryAfterFormatted?: string;
+    isDailyQuota?: boolean;
+    cause?: any;
+  }) {
+    super(message);
+    this.name = 'GeminiServiceError';
+    this.code = options?.code || 'UNKNOWN';
+    this.status = options?.status || 500;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
+    this.retryAfterFormatted = options?.retryAfterFormatted;
+    this.isDailyQuota = Boolean(options?.isDailyQuota);
+  }
+}
+
+// In-memory cache for daily quota exhaustion to avoid hammering API after 429
+let dailyQuotaExhaustedUntil: number = 0;
+
+export function getQuotaStatus(): { isExhausted: boolean; retryAfterFormatted?: string; retryAfterSeconds?: number } {
+  const now = Date.now();
+  if (dailyQuotaExhaustedUntil > now) {
+    const remainingSeconds = Math.ceil((dailyQuotaExhaustedUntil - now) / 1000);
+    return {
+      isExhausted: true,
+      retryAfterSeconds: remainingSeconds,
+      retryAfterFormatted: formatSeconds(remainingSeconds)
+    };
+  }
+  return { isExhausted: false };
+}
+
+export function resetQuotaCache() {
+  dailyQuotaExhaustedUntil = 0;
+}
+
+export function setDailyQuotaExhausted(seconds: number) {
+  dailyQuotaExhaustedUntil = Date.now() + (seconds * 1000);
+}
+
+export function formatSeconds(sec: number): string {
+  if (sec < 60) return `in ${sec}s`;
+  const mins = Math.floor(sec / 60);
+  if (mins < 60) return `in ~${mins} min${mins > 1 ? 's' : ''}`;
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  return `in ~${hours}h ${remainingMins > 0 ? remainingMins + 'm' : ''}`.trim();
+}
+
+export function parseGeminiError(error: any): GeminiServiceError {
+  const msg = String(error?.message || error || '');
+  let status = error?.status || 500;
+  let code: 'QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'SERVICE_UNAVAILABLE' | 'TIMEOUT' | 'UNKNOWN' = 'UNKNOWN';
+  let retryAfterSeconds: number | undefined;
+  let retryAfterFormatted: string | undefined;
+  let isDailyQuota = false;
+
+  // Check status code from error object or message
+  if (status === 429 || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+    status = 429;
+    code = 'QUOTA_EXHAUSTED';
+    if (msg.includes('PerDay') || msg.includes('daily') || msg.includes('free_tier_requests') || msg.includes('limit: 20')) {
+      isDailyQuota = true;
+    }
+  } else if (status === 503 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand')) {
+    status = 503;
+    code = 'SERVICE_UNAVAILABLE';
+  } else if (msg.includes('timeout') || msg.includes('DEADLINE_EXCEEDED') || error?.name === 'AbortError') {
+    status = 504;
+    code = 'TIMEOUT';
+  }
+
+  // Parse retry delay from error message or details
+  const secMatch = msg.match(/"retryDelay":\s*"(\d+)s"/) || msg.match(/retry in\s+(\d+)s/);
+  if (secMatch) {
+    retryAfterSeconds = parseInt(secMatch[1], 10);
+    retryAfterFormatted = formatSeconds(retryAfterSeconds);
+  } else {
+    const humanMatch = msg.match(/Please retry in\s+([0-9hms\.]+)/i);
+    if (humanMatch) {
+      retryAfterFormatted = `in ~${humanMatch[1].split('.')[0]}`;
+    }
+  }
+
+  if (isDailyQuota && retryAfterSeconds) {
+    dailyQuotaExhaustedUntil = Date.now() + (retryAfterSeconds * 1000);
+  } else if (isDailyQuota) {
+    // Default 1 hour if not specified but daily quota exceeded
+    dailyQuotaExhaustedUntil = Date.now() + (3600 * 1000);
+    retryAfterFormatted = retryAfterFormatted || 'in ~1 hour';
+  }
+
+  return new GeminiServiceError(
+    isDailyQuota
+      ? `Gemini daily quota is currently exhausted. ${retryAfterFormatted ? `Quota resets ${retryAfterFormatted}.` : 'Please continue with manual assessment.'}`
+      : code === 'SERVICE_UNAVAILABLE'
+      ? 'Gemini is currently experiencing high demand. Please continue with manual assessment.'
+      : code === 'TIMEOUT'
+      ? 'Gemini request timed out. Please continue with manual assessment.'
+      : `Gemini assessment failed: ${msg}`,
+    {
+      code,
+      status,
+      retryAfterSeconds,
+      retryAfterFormatted,
+      isDailyQuota,
+      cause: error
+    }
+  );
+}
+
 /**
  * Initialize Google GenAI client:
  * 1. Standard Vertex AI: when GOOGLE_CLOUD_PROJECT is set and GEMINI_API_KEY is omitted,
@@ -69,6 +189,21 @@ export async function analyzeItemWithGemini(params: {
   mimeType?: string;
 }): Promise<GeminiInitialAssessmentResponse> {
   const config = getAppConfig();
+
+  // Quota-aware fast check: do not repeatedly retry daily quota exhaustion
+  const quota = getQuotaStatus();
+  if (quota.isExhausted) {
+    throw new GeminiServiceError(
+      `Gemini daily quota limit is exhausted. Resets ${quota.retryAfterFormatted}. Please continue with manual assessment.`,
+      {
+        code: 'QUOTA_EXHAUSTED',
+        status: 429,
+        retryAfterSeconds: quota.retryAfterSeconds,
+        retryAfterFormatted: quota.retryAfterFormatted,
+        isDailyQuota: true
+      }
+    );
+  }
 
   if (config.DEMO_MODE) {
     return getDeterministicDemoAssessment(params.description);
@@ -135,8 +270,11 @@ City: "${params.city}".`;
     const parsed = JSON.parse(response.text || '{}');
     return GeminiInitialAssessmentResponseSchema.parse(parsed);
   } catch (error: any) {
+    if (error instanceof GeminiServiceError) {
+      throw error;
+    }
     console.error('Gemini Vertex AI Assessment Error:', error);
-    throw new Error(`Gemini assessment failed: ${error?.message || error}`);
+    throw parseGeminiError(error);
   }
 }
 
@@ -158,6 +296,13 @@ export async function explainActionsWithGemini(params: {
   const config = getAppConfig();
 
   if (config.DEMO_MODE) {
+    return getDeterministicDemoRecommendations(params);
+  }
+
+  // Quota-aware fast check: fallback to deterministic synthesis if quota exhausted
+  const quota = getQuotaStatus();
+  if (quota.isExhausted) {
+    console.log(`Gemini daily quota exhausted (${quota.retryAfterFormatted}). Using deterministic recommendation synthesizer.`);
     return getDeterministicDemoRecommendations(params);
   }
 
@@ -370,6 +515,18 @@ export async function draftListingWithGemini(params: {
       isFree,
       suggestedPriceInr: suggestedPrice,
       pickupPreference: `Pickup near ${params.localityName}, Bengaluru`
+    };
+  }
+
+  // Quota-aware fast check: return deterministic template if quota exhausted
+  const quota = getQuotaStatus();
+  if (quota.isExhausted) {
+    console.log(`Gemini daily quota exhausted (${quota.retryAfterFormatted}). Using deterministic listing template.`);
+    return {
+      title: `${params.category.charAt(0).toUpperCase() + params.category.slice(1)} (${params.localityName})`,
+      description: `${params.userDescription || 'Available for community reuse.'} Confirmed condition: ${params.condition.replace(/_/g, ' ')}.`,
+      isFree: true,
+      pickupPreference: `Pickup in ${params.localityName}, Bengaluru`
     };
   }
 

@@ -117,7 +117,11 @@ export const AssessmentSchema = z.object({
   recommendationEvidenceIds: RecommendationEvidenceSchema.default({ ruleIds: [], organizationIds: [] }),
   createdAt: z.string(),
   isDemo: z.boolean().default(false),
-  isTest: z.boolean().default(false).optional()
+  isTest: z.boolean().default(false).optional(),
+  isManual: z.boolean().default(false).optional(),
+  isPhotoAnalyzed: z.boolean().default(true).optional(),
+  isExample: z.boolean().default(false).optional(),
+  generationDate: z.string().optional()
 });
 export type Assessment = z.infer<typeof AssessmentSchema>;
 
