@@ -10,14 +10,17 @@ import {
   Layers, 
   Info,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Trees
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { VirtualCommunityGrove } from '@/components/VirtualCommunityGrove';
+import { CommunityMetrics } from '@/types/models';
 
 export default function CommunityImpactPage() {
   const { isDemoMode } = useAuth();
   const [viewMode, setViewMode] = useState<'demo' | 'live'>('demo');
-  const [metrics, setMetrics] = useState<any>(null);
+  const [metrics, setMetrics] = useState<CommunityMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchMetrics = async (mode: 'demo' | 'live') => {
@@ -44,13 +47,13 @@ export default function CommunityImpactPage() {
         <div>
           <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-forest-800 bg-forest-100 px-3 py-1 rounded-full mb-1">
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>BigQuery Community Analytics</span>
+            <span>Firestore Community Analytics</span>
           </div>
           <h1 className="text-3xl font-extrabold text-forest-950">
             Community Impact Dashboard
           </h1>
           <p className="text-sm text-gray-600 mt-0.5">
-            Deduplicated outcomes pipeline powered by Pub/Sub and BigQuery.
+            Deduplicated outcomes pipeline backed by verified Firestore records.
           </p>
         </div>
 
@@ -89,12 +92,17 @@ export default function CommunityImpactPage() {
           <li><strong>Counts completed outcomes only:</strong> Staging or chosen actions are omitted.</li>
           <li><strong>Diversion exclusion:</strong> Disposal actions are never counted toward diversion totals.</li>
           <li><strong>Strict weight accounting:</strong> Absent weight is treated as unknown, never as measured zero.</li>
-          <li><strong>No fabricated claims:</strong> We do not publish speculative CO₂ or tree metrics without documented factors.</li>
+          <li><strong>Zero speculative claims:</strong> Virtual trees are strictly symbolic handover counters; we publish no speculative CO₂ reduction or ecological-equivalence figures.</li>
         </ul>
       </div>
 
       {metrics && (
         <div className="space-y-6">
+          {/* Virtual Community Grove */}
+          {metrics.grove && (
+            <VirtualCommunityGrove grove={metrics.grove} isDemo={viewMode === 'demo'} />
+          )}
+
           {/* Top Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white p-6 rounded-2xl border border-warm-200 shadow-2xs space-y-2">
@@ -132,7 +140,7 @@ export default function CommunityImpactPage() {
                   }`}
                 />
                 <span className="text-sm font-bold text-gray-900 capitalize">
-                  {viewMode === 'demo' ? 'Sample Demo Pipeline' : 'Live BigQuery Feed'}
+                  {viewMode === 'demo' ? 'Sample Demo Pipeline' : 'Live Firestore Stream'}
                 </span>
               </div>
               <p className="text-[11px] text-gray-400">
@@ -203,14 +211,14 @@ export default function CommunityImpactPage() {
             </div>
           </div>
 
-          {/* Outbox Pipeline Explanation */}
+          {/* Firestore Outcomes Pipeline Explanation */}
           <div className="bg-warm-100/60 p-5 rounded-2xl border border-warm-200 text-xs text-gray-600 space-y-1.5">
             <div className="flex items-center space-x-1.5 font-bold text-gray-800">
               <Clock className="w-4 h-4 text-forest-700" />
               <span>Event Delivery &amp; Eventual Consistency</span>
             </div>
             <p>
-              Community impact updates with a short delay because events travel through a Firestore Outbox &rarr; Pub/Sub Topic &rarr; BigQuery Subscription &rarr; Deduplicated Analytics View.
+              Community impact metrics and grove tallies are derived directly from verified, deduplicated completed outcome records stored in Firestore.
             </p>
           </div>
         </div>

@@ -217,3 +217,29 @@ export const AnalyticsEventSchema = z.object({
   publishStatus: z.enum(['pending', 'published', 'failed']).default('pending')
 });
 export type AnalyticsEvent = z.infer<typeof AnalyticsEventSchema>;
+
+// Virtual Community Grove Metrics Schema
+export const CommunityGroveMetricsSchema = z.object({
+  totalTrees: z.number().int().nonnegative(),
+  milestonesUnlocked: z.number().int().nonnegative(),
+  currentMilestone: z.number().int().nonnegative(),
+  progressInCurrentMilestone: z.number().int().min(0).max(10),
+  targetForNextMilestone: z.number().int().positive(),
+  remainingToNextMilestone: z.number().int().min(0).max(10),
+  verifiedReceiptCount: z.number().int().nonnegative(),
+  qualifyingAction: z.literal('reuse'),
+  dataSource: z.string(),
+  isSymbolic: z.literal(true)
+});
+export type CommunityGroveMetrics = z.infer<typeof CommunityGroveMetricsSchema>;
+
+export interface CommunityMetrics {
+  totalCompletedActions: number;
+  actionsByCategory: Record<string, number>;
+  actionsByType: Record<string, number>;
+  divertedKgTotal: number | null;
+  itemsWithWeightCount: number;
+  grove: CommunityGroveMetrics;
+  lastAnalyticsUpdateTime: string;
+  isDemo: boolean;
+}

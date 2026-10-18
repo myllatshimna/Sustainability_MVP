@@ -10,7 +10,9 @@ import {
   Listing,
   PublicListing,
   ListingRequest,
-  ListingStatus
+  ListingStatus,
+  CommunityMetrics,
+  CommunityGroveMetrics
 } from '@/types/models';
 import { calculateHaversineDistanceKm, isBengaluruCity } from '@/data/bengaluruLocalities';
 import { DEMO_ORGANIZATIONS, DEMO_LOCAL_RULES, SEATTLE_ORGANIZATIONS, SEATTLE_LOCAL_RULES } from '@/data/curatedSeattle';
@@ -453,15 +455,7 @@ class RepositoryService {
    * - Diversion count only includes repair, reuse, donate, recycle (EXCLUDES dispose)
    * - Treats absent weight as unknown, not zero
    */
-  async getCommunityMetrics(isDemoMode: boolean): Promise<{
-    totalCompletedActions: number;
-    actionsByCategory: Record<string, number>;
-    actionsByType: Record<string, number>;
-    divertedKgTotal: number | null;
-    itemsWithWeightCount: number;
-    lastAnalyticsUpdateTime: string;
-    isDemo: boolean;
-  }> {
+  async getCommunityMetrics(isDemoMode: boolean): Promise<CommunityMetrics> {
     let outcomes: Outcome[] = [];
 
     if (this.demoOutcomes.size === 0) {
@@ -492,7 +486,7 @@ class RepositoryService {
       }
     }
 
-    // Deduplicate outcomes by id
+    // Deduplicate outcomes by canonical id
     const uniqueMap = new Map<string, Outcome>();
     for (const o of outcomes) {
       uniqueMap.set(o.id, o);
@@ -530,12 +524,40 @@ class RepositoryService {
       }
     }
 
+    // Virtual Community Grove:
+    // - 1 completed reuse handover = 1 virtual tree
+    // - 10 completed handovers unlock a Community Grove milestone
+    // - Receipt confirmation updates verification status without adding a tree
+    // - Disposal, reservations, cancelled exchanges, and test records are excluded
+    // - Canonical deduplication ensures community totals do not double-count
+    const qualifyingReuseOutcomes = deduped.filter(o => o.action === 'reuse');
+    const totalTrees = qualifyingReuseOutcomes.length;
+    const verifiedReceiptCount = qualifyingReuseOutcomes.filter(o => Boolean(o.recipientConfirmedAt)).length;
+    const milestonesUnlocked = Math.floor(totalTrees / 10);
+    const progressInCurrentMilestone = totalTrees % 10;
+    const targetForNextMilestone = (milestonesUnlocked + 1) * 10;
+    const remainingToNextMilestone = targetForNextMilestone - totalTrees;
+
+    const grove: CommunityGroveMetrics = {
+      totalTrees,
+      milestonesUnlocked,
+      currentMilestone: milestonesUnlocked,
+      progressInCurrentMilestone,
+      targetForNextMilestone,
+      remainingToNextMilestone,
+      verifiedReceiptCount,
+      qualifyingAction: 'reuse',
+      dataSource: isDemoMode ? 'demo_store_deduplicated_canonical' : 'firestore_deduplicated_canonical',
+      isSymbolic: true
+    };
+
     return {
       totalCompletedActions: totalCompleted,
       actionsByCategory,
       actionsByType,
       divertedKgTotal: itemsWithWeightCount > 0 ? parseFloat(divertedKgSum.toFixed(2)) : null,
       itemsWithWeightCount,
+      grove,
       lastAnalyticsUpdateTime: new Date().toISOString(),
       isDemo: isDemoMode
     };
