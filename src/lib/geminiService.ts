@@ -136,6 +136,8 @@ export function parseGeminiError(error: any): GeminiServiceError {
   return new GeminiServiceError(
     isDailyQuota
       ? `Gemini daily quota is currently exhausted. ${retryAfterFormatted ? `Quota resets ${retryAfterFormatted}.` : 'Please continue with manual assessment.'}`
+      : code === 'QUOTA_EXHAUSTED'
+      ? `Gemini rate limit or quota exceeded. ${retryAfterFormatted ? `Please retry ${retryAfterFormatted} or continue with manual assessment.` : 'Please continue with manual assessment.'}`
       : code === 'SERVICE_UNAVAILABLE'
       ? 'Gemini is currently experiencing high demand. Please continue with manual assessment.'
       : code === 'TIMEOUT'
@@ -153,29 +155,40 @@ export function parseGeminiError(error: any): GeminiServiceError {
 }
 
 /**
- * Initialize Google GenAI client:
- * 1. Standard Vertex AI: when GOOGLE_CLOUD_PROJECT is set and GEMINI_API_KEY is omitted,
- *    uses Application Default Credentials (ADC) on Vertex AI backend.
- * 2. Gemini Developer API: when GEMINI_API_KEY is provided, uses direct API key.
+ * Initialize Google GenAI client with explicit backend selection:
+ * 1. Vertex AI ('vertex'):
+ *    - Uses Application Default Credentials (ADC) from the environment (e.g. Cloud Run runtime service account).
+ *    - Requires project and location; no downloaded keys needed.
+ *    - GEMINI_API_KEY CANNOT override this backend.
+ *    - Errors are never silently redirected to another paid backend.
+ * 2. Developer API ('developer'):
+ *    - Uses direct GEMINI_API_KEY with Google GenAI SDK.
  */
-function getGoogleGenAIClient(config: ReturnType<typeof getAppConfig>): GoogleGenAI {
-  if (config.GEMINI_API_KEY) {
-    return new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
-  }
+export function getGoogleGenAIClient(config: ReturnType<typeof getAppConfig>): GoogleGenAI {
+  if (config.GEMINI_BACKEND === 'vertex') {
+    const project = config.GOOGLE_CLOUD_PROJECT || 'sustainabilitymvp-ed15e';
+    const location = config.GOOGLE_CLOUD_LOCATION || 'us-central1';
 
-  if (config.GOOGLE_CLOUD_PROJECT) {
+    // Strict Vertex AI client without apiKey — ADC handles service account auth
     return new GoogleGenAI({
       vertexai: true,
-      project: config.GOOGLE_CLOUD_PROJECT,
-      location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
+      project,
+      location
     });
   }
 
-  // Fallback to ADC on Vertex AI default
-  return new GoogleGenAI({
-    vertexai: true,
-    location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
-  });
+  // Developer API mode
+  if (!config.GEMINI_API_KEY) {
+    throw new GeminiServiceError(
+      'GEMINI_BACKEND is set to "developer" but GEMINI_API_KEY is not configured.',
+      {
+        code: 'SERVICE_UNAVAILABLE',
+        status: 503
+      }
+    );
+  }
+
+  return new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
 }
 
 /**

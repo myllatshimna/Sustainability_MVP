@@ -4,13 +4,15 @@ export const EnvSchema = z.object({
   // Demo Mode toggle
   DEMO_MODE: z.string().default('true').transform(v => v === 'true' || v === '1'),
   
-  // Google Cloud Project
+  // Google Cloud Project & Location
   GOOGLE_CLOUD_PROJECT: z.string().optional(),
+  GOOGLE_CLOUD_LOCATION: z.string().default('us-central1'),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
   
-  // Gemini on Vertex AI / Google Gen AI
+  // Gemini Backend Selection ('vertex' | 'developer')
+  GEMINI_BACKEND: z.enum(['vertex', 'developer']).default('developer'),
   GEMINI_MODEL_ID: z.string().default('gemini-2.5-flash'),
-  GEMINI_API_KEY: z.string().optional(), // For direct Google GenAI SDK fallback if not using ADC
+  GEMINI_API_KEY: z.string().optional(), // For direct Google GenAI SDK fallback when backend is 'developer'
   
   // Cloud Storage
   GCS_BUCKET_NAME: z.string().optional(),
@@ -41,10 +43,17 @@ export const EnvSchema = z.object({
 export type AppConfig = z.infer<typeof EnvSchema>;
 
 export function getAppConfig(): AppConfig {
+  const explicitBackend = process.env.GEMINI_BACKEND?.toLowerCase();
+  const geminiBackend = (explicitBackend === 'vertex' || explicitBackend === 'developer')
+    ? explicitBackend
+    : (process.env.GEMINI_API_KEY ? 'developer' : (process.env.GOOGLE_CLOUD_PROJECT ? 'vertex' : 'developer'));
+
   const parsed = EnvSchema.safeParse({
     DEMO_MODE: process.env.DEMO_MODE ?? 'true',
     GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
+    GOOGLE_CLOUD_LOCATION: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
     GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    GEMINI_BACKEND: geminiBackend,
     GEMINI_MODEL_ID: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GCS_BUCKET_NAME: process.env.GCS_BUCKET_NAME,
@@ -66,6 +75,8 @@ export function getAppConfig(): AppConfig {
     console.warn('Environment configuration warning:', parsed.error.format());
     return {
       DEMO_MODE: true,
+      GEMINI_BACKEND: 'developer',
+      GOOGLE_CLOUD_LOCATION: 'us-central1',
       GEMINI_MODEL_ID: 'gemini-2.5-flash',
       PUBSUB_TOPIC_NAME: 'reloop-outcomes-topic',
       BIGQUERY_DATASET: 'reloop_analytics',
