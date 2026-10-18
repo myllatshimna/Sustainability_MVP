@@ -151,29 +151,25 @@ async function runLiveListingPhotoUploadVerification() {
 
   // Step 5: Fill Form Fields & Publish
   console.log('\n--- Step 4: Filling Listing Form & Publishing ---');
-  await page.evaluate((titleVal, descVal, prefVal) => {
-    const inputs = document.querySelectorAll('input[type="text"]');
-    const textarea = document.querySelector('textarea');
-    if (inputs[0]) {
-      inputs[0].value = titleVal;
-      inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    if (textarea) {
-      textarea.value = descVal;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    if (inputs[1]) {
-      inputs[1].value = prefVal;
-      inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  }, `Sheesham Wood Table (${testRunId})`, 'Solid wood study table with working storage drawers and clean finish.', 'Pickup near Defence Colony, Indiranagar');
+  await page.type('input[placeholder*="Solid Teak Study Chair"]', `Sheesham Wood Table (${testRunId})`);
+  await page.type('textarea[placeholder*="Describe the item"]', 'Solid wood study table with working storage drawers and clean finish.');
+  await page.type('input[placeholder*="Doorstep pickup"]', 'Pickup near Defence Colony, Indiranagar');
 
   const submitButton = await page.$('button[type="submit"]');
   if (!submitButton) throw new Error('Submit button not found');
   await submitButton.click();
 
-  // Wait for navigation to /listings/list_...
-  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+  // Wait for client-side navigation to /listings/list_... or error
+  console.log('  Waiting for listing submission to complete...');
+  await page.waitForFunction(() => {
+    return window.location.pathname.startsWith('/listings/list_') || !!document.querySelector('.bg-red-50');
+  }, { timeout: 30000 });
+
+  const currentPath = await page.evaluate(() => window.location.pathname);
+  if (!currentPath.startsWith('/listings/list_')) {
+    const errorText = await page.evaluate(() => document.querySelector('.bg-red-50')?.textContent || 'Unknown error');
+    throw new Error(`Listing submission failed: ${errorText}`);
+  }
   const publishedUrl = page.url();
   console.log(`  ✓ Navigated to published listing URL: ${publishedUrl}`);
 
