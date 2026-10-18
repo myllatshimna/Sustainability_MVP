@@ -25,7 +25,7 @@ if (fs.existsSync(envPath)) {
 
 describe('Live Gemini Evaluations — Grounding & Evidence-Based Synthesis', () => {
   const isOptedIn = process.env.RUN_LIVE_GEMINI === 'true';
-  const hasApiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.startsWith('AIza'));
+  const hasApiKey = Boolean(process.env.GEMINI_API_KEY && (process.env.GEMINI_API_KEY.startsWith('AIza') || process.env.GEMINI_API_KEY.startsWith('AQ.')));
   const shouldRunLive = isOptedIn && hasApiKey;
 
   it('runs live Gemini 2.5 Flash recommendation synthesis for pristine wooden chair', async () => {
