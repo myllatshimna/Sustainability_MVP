@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReLoop Live Product Demo Simulator</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+      50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.5); }
+    }
+    .scanner-line {
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, transparent, #34D399, transparent);
+      animation: scan 2s ease-in-out infinite alternate;
+    }
+    @keyframes scan {
+      0% { top: 0%; }
+      100% { top: 95%; }
+    }
+    .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 antialiased font-sans">
+
+  <!-- Top Controller Bar -->
+  <div class="w-full max-w-5xl mb-4 flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl px-5 py-3 shadow-md">
+    <div class="flex items-center gap-3">
+      <div class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></div>
+      <span class="text-sm font-bold tracking-wide text-white">ReLoop Auto-Demo Simulator</span>
+      <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md font-mono">16:9 HD Ready</span>
+    </div>
+
+    <!-- Stepper Buttons -->
+    <div class="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+      <button onclick="setStep(0)" id="btn-0" class="px-3 py-1.5 rounded-md font-medium transition bg-emerald-600 text-white">1. AI Intake</button>
+      <button onclick="setStep(1)" id="btn-1" class="px-3 py-1.5 rounded-md font-medium transition text-slate-400 hover:text-white">2. Disambiguation</button>
+      <button onclick="setStep(2)" id="btn-2" class="px-3 py-1.5 rounded-md font-medium transition text-slate-400 hover:text-white">3. Circular Route</button>
+      <button onclick="setStep(3)" id="btn-3" class="px-3 py-1.5 rounded-md font-medium transition text-slate-400 hover:text-white">4. Community Grove</button>
+      <button onclick="setStep(4)" id="btn-4" class="px-3 py-1.5 rounded-md font-medium transition text-slate-400 hover:text-white">5. Cloud Arch</button>
+    </div>
+
+    <!-- Auto Play Toggle -->
+    <div class="flex items-center gap-2">
+      <button onclick="togglePlay()" id="playBtn" class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-sm">
+        <span id="playIcon">⏸️</span> <span id="playText">Pause Auto-Run</span>
+      </button>
+      <span id="timerText" class="text-xs font-mono text-slate-400 w-12 text-right">0:00</span>
+    </div>
+  </div>
+
+  <!-- Browser Window Wrapper (16:9 Aspect Ratio) -->
+  <div class="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col" style="aspect-ratio: 16/9; max-height: 580px;">
+    
+    <!-- Chrome Header -->
+    <div class="bg-slate-950 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+      <div class="flex items-center gap-2">
+        <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+        <div class="w-3 h-3 rounded-full bg-amber-500/80"></div>
+        <div class="w-3 h-3 rounded-full bg-emerald-500/80"></div>
+      </div>
+      <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-4 py-1 text-slate-300 font-mono text-xs w-2/3 justify-center">
+        <span class="text-emerald-400">🔒 https://</span><span>reloop-app-882475917539.asia-south1.run.app</span><span id="urlPath" class="text-emerald-400 font-semibold">/assess</span>
+      </div>
+      <div class="flex items-center gap-2 text-slate-500 font-mono text-xs">
+        <span>asia-south1</span>
+        <span>•</span>
+        <span class="text-emerald-400">Vertex AI</span>
+      </div>
+    </div>
+
+    <!-- Live Screen Content Area -->
+    <div id="screenContainer" class="flex-1 p-6 overflow-hidden relative flex flex-col justify-center bg-slate-950/50">
+      
+      <!-- SCREEN 1: AI Intake -->
+      <div id="screen-0" class="fade-in space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+              <span>Multimodal Item Diagnostic</span>
+              <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">Gemini 2.5 Flash</span>
+            </h2>
+            <p class="text-sm text-slate-400">Upload bulky household goods for instant material & condition assessment</p>
+          </div>
+          <span class="text-xs text-slate-400 font-mono bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">📍 Indiranagar, Ward 82</span>
+        </div>
+
+        <div class="grid grid-cols-12 gap-5 mt-2">
+          <!-- Photo Scanner Dropzone -->
+          <div class="col-span-7 bg-slate-900 border-2 border-dashed border-emerald-500/40 rounded-xl p-5 flex flex-col items-center justify-center relative overflow-hidden h-64">
+            <div class="scanner-line"></div>
+            <div class="text-4xl mb-2">🪑</div>
+            <div class="text-sm font-semibold text-white">Study Chair (Teak Wood &amp; Iron Frame)</div>
+            <p class="text-xs text-slate-400 mt-1">Image input processed via Vertex AI multimodal tokens</p>
+            <div class="flex items-center gap-2 mt-4 text-xs font-mono">
+              <span class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded">Category: Furniture</span>
+              <span class="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded">Primary: Wood</span>
+              <span class="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded">Sub-Second: 1.2s</span>
+            </div>
+          </div>
+
+          <!-- Real-Time Token Breakdown -->
+          <div class="col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Live AI Extraction</div>
+              <ul class="space-y-2 text-xs">
+                <li class="flex justify-between border-b border-slate-800 pb-1.5">
+                  <span class="text-slate-400">Taxonomy:</span> <span class="text-white font-medium">Household Furniture</span>
+                </li>
+                <li class="flex justify-between border-b border-slate-800 pb-1.5">
+                  <span class="text-slate-400">Estimated Dim:</span> <span class="text-white font-medium">85cm x 45cm x 50cm</span>
+                </li>
+                <li class="flex justify-between border-b border-slate-800 pb-1.5">
+                  <span class="text-slate-400">Observed Wear:</span> <span class="text-amber-400 font-medium">Slight Base Joint Tilt</span>
+                </li>
+                <li class="flex justify-between pb-1">
+                  <span class="text-slate-400">Confidence:</span> <span class="text-emerald-400 font-medium">98.4% (Structured Zod)</span>
+                </li>
+              </ul>
+            </div>
+            <button class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-sm">
+              ✨ Analyzing Defect Regions...
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN 2: Dynamic Clarification Modal -->
+      <div id="screen-1" class="fade-in space-y-4 hidden">
+        <div class="max-w-2xl mx-auto bg-slate-900 border border-blue-500/40 rounded-2xl p-6 shadow-2xl relative">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">❓</span>
+              <h3 class="text-lg font-bold text-white">Dynamic AI Disambiguation</h3>
+            </div>
+            <span class="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded">Proactive Diagnosis</span>
+          </div>
+
+          <p class="text-xs text-slate-300 mb-4">
+            To prevent premature landfill disposal, Gemini 2.5 Flash identified 2 ambiguous condition zones:
+          </p>
+
+          <div class="space-y-3.5">
+            <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+              <p class="text-xs font-semibold text-white mb-2">1. The right front leg exhibits a slight tilt. Is this:</p>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="p-2.5 rounded-lg border border-emerald-500 bg-emerald-500/10 text-emerald-300 font-medium flex items-center gap-2">
+                  <span>✔</span> Loose mounting bolts / screws
+                </div>
+                <div class="p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 text-slate-400">
+                  Splintered or split timber leg
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+              <p class="text-xs font-semibold text-white mb-2">2. Surface upholstery &amp; seat cushion condition:</p>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="p-2.5 rounded-lg border border-emerald-500 bg-emerald-500/10 text-emerald-300 font-medium flex items-center gap-2">
+                  <span>✔</span> Superficial stain (washable)
+                </div>
+                <div class="p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 text-slate-400">
+                  Deep tear or missing foam
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 flex justify-end">
+            <button class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition">
+              Evaluate Bengaluru Circular Paths ➔
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN 3: Circular Routing Cards -->
+      <div id="screen-2" class="fade-in space-y-4 hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+              <span>Evidence-Grounded Recommendations</span>
+              <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">Repair > Reuse > DWCC</span>
+            </h2>
+            <p class="text-xs text-slate-400">Prioritized circular hierarchy matched with verified Bengaluru ecosystem partners</p>
+          </div>
+          <span class="text-xs text-slate-400 font-mono">Indiranagar • 5km Radius</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4 mt-1">
+          <!-- Card 1: Repair -->
+          <div class="bg-slate-900 border border-emerald-500/40 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Top Priority</span>
+                <span class="text-xs bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded">95% Viability</span>
+              </div>
+              <h4 class="text-sm font-bold text-white">🛠️ Neighborhood Repair</h4>
+              <p class="text-xs text-slate-400 mt-1">Tighten base bolts & replace 2 washers. Est. Cost: ₹120 – ₹180.</p>
+              <div class="mt-3 p-2 bg-slate-950 rounded-lg border border-slate-800 text-xs text-slate-300">
+                <strong class="text-white">Local Partner:</strong> Indiranagar Woodworkers, 100ft Rd (800m away)
+              </div>
+            </div>
+            <button class="w-full mt-4 py-1.5 bg-emerald-600/30 border border-emerald-500/50 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition">
+              View DIY / Repair Guide
+            </button>
+          </div>
+
+          <!-- Card 2: 1-Click Reuse -->
+          <div class="bg-slate-900 border-2 border-emerald-500 rounded-xl p-4 flex flex-col justify-between relative shadow-lg shadow-emerald-500/10">
+            <div class="absolute -top-2.5 right-4 bg-emerald-500 text-slate-950 text-[10px] font-black uppercase px-2 py-0.5 rounded">
+              High Demand
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Community Reuse</span>
+                <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded">Direct Transfer</span>
+              </div>
+              <h4 class="text-sm font-bold text-white">♻️ 1-Click Community Listing</h4>
+              <p class="text-xs text-slate-400 mt-1">Transfer directly to local college students or neighbors in Indiranagar.</p>
+              <div class="mt-3 p-2 bg-slate-950 rounded-lg border border-slate-800 text-xs text-slate-300">
+                <strong class="text-white">Active Seekers:</strong> 6 nearby requests for study chairs
+              </div>
+            </div>
+            <button class="w-full mt-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-sm">
+              ⚡ Publish to Community
+            </button>
+          </div>
+
+          <!-- Card 3: BBMP DWCC -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between opacity-80">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Last Mile</span>
+                <span class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Safe Disposal</span>
+              </div>
+              <h4 class="text-sm font-bold text-white">🏛️ BBMP Dry Waste Centre</h4>
+              <p class="text-xs text-slate-400 mt-1">Authorized municipal e-waste / dry waste segregation center.</p>
+              <div class="mt-3 p-2 bg-slate-950 rounded-lg border border-slate-800 text-xs text-slate-400">
+                <strong class="text-slate-300">Location:</strong> Ward 82 DWCC, Domlur Flyover Underpass
+              </div>
+            </div>
+            <button class="w-full mt-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition">
+              Get Drop-off Hours
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN 4: Community Grove & Verified Exchange -->
+      <div id="screen-3" class="fade-in space-y-4 hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+              <span>Virtual Community Grove</span>
+              <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">Verified Circular Impact</span>
+            </h2>
+            <p class="text-xs text-slate-400">1 completed reuse handover = 1 symbolic tree • 10 handovers = neighborhood milestone</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">Motion:</span>
+            <span class="text-xs bg-slate-800 border border-slate-700 text-slate-300 px-2 py-1 rounded">Accessible / Static</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-4">
+          <!-- Grove Visual Grid -->
+          <div class="col-span-8 bg-slate-900 border border-emerald-500/40 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <div class="text-sm font-bold text-emerald-400">Indiranagar Sector Grove (Milestone 3 Unlock)</div>
+                <div class="text-xs font-mono text-slate-300 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/30">
+                  <strong class="text-emerald-400 text-sm">24</strong> Symbolic Trees
+                </div>
+              </div>
+
+              <!-- Symbolic Trees Grid -->
+              <div class="grid grid-cols-8 gap-2 p-3 bg-slate-950 rounded-lg border border-slate-800 text-center text-xl">
+                <span>🌲</span><span>🌳</span><span>🌴</span><span>🌲</span><span>🌳</span><span>🌲</span><span>🌴</span><span>🌳</span>
+                <span>🌲</span><span>🌳</span><span>🌲</span><span>🌴</span><span>🌳</span><span>🌲</span><span>🌴</span><span>🌳</span>
+                <span>🌲</span><span>🌳</span><span>🌴</span><span>🌲</span><span>🌳</span><span>🌲</span><span>🌴</span>
+                <span class="animate-bounce text-2xl">🌱</span>
+              </div>
+            </div>
+
+            <!-- Milestone Progress -->
+            <div class="mt-3">
+              <div class="flex justify-between text-xs text-slate-400 mb-1">
+                <span>Progress to Next Milestone (Tree #30)</span>
+                <span class="font-bold text-emerald-400">4 / 10 Completed</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 40%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Verified Exchange Ledger -->
+          <div class="col-span-4 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Two-Party Verified Log</div>
+              <div class="space-y-2 text-xs">
+                <div class="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                  <div class="flex justify-between text-[11px] text-slate-400">
+                    <span>Just Now</span> <span class="text-emerald-400 font-semibold">+1 Tree</span>
+                  </div>
+                  <div class="font-medium text-white mt-0.5">Study Chair Handover</div>
+                  <div class="text-slate-400 text-[11px]">Priya ➔ Rahul (Indiranagar)</div>
+                </div>
+                <div class="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                  <div class="flex justify-between text-[11px] text-slate-400">
+                    <span>2 hrs ago</span> <span class="text-emerald-400 font-semibold">+1 Tree</span>
+                  </div>
+                  <div class="font-medium text-white mt-0.5">Kids Bicycle Handover</div>
+                  <div class="text-slate-400 text-[11px]">Karthik ➔ Sunita (Koramangala)</div>
+                </div>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500 text-center mt-2">
+              Canonical deduplication • Zero double counting
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN 5: Architecture & Benchmarks -->
+      <div id="screen-4" class="fade-in space-y-4 hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+              <span>Production Architecture &amp; Benchmarks</span>
+              <span class="text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded">100% Cloud Native</span>
+            </h2>
+            <p class="text-xs text-slate-400">Sub-second latency, zero exposed keys, and automated reliability</p>
+          </div>
+          <span class="text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-md">76/76 Tests Passing</span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3 mt-1">
+          <div class="bg-slate-900 border border-emerald-500/40 rounded-xl p-3 text-center">
+            <div class="text-xs text-emerald-400 font-mono font-semibold">Gemini 2.5 Flash</div>
+            <div class="text-lg font-bold text-white mt-1">1.2s Latency</div>
+            <p class="text-[11px] text-slate-400 mt-1">Vertex AI multimodal tokens</p>
+          </div>
+          <div class="bg-slate-900 border border-blue-500/40 rounded-xl p-3 text-center">
+            <div class="text-xs text-blue-400 font-mono font-semibold">Next.js 15 &amp; React 19</div>
+            <div class="text-lg font-bold text-white mt-1">&lt; 85ms Warm</div>
+            <p class="text-[11px] text-slate-400 mt-1">SSR &amp; Edge Route Handlers</p>
+          </div>
+          <div class="bg-slate-900 border border-purple-500/40 rounded-xl p-3 text-center">
+            <div class="text-xs text-purple-400 font-mono font-semibold">Google Cloud Run</div>
+            <div class="text-lg font-bold text-white mt-1">Mumbai Region</div>
+            <p class="text-[11px] text-slate-400 mt-1">Keyless IAM (ADC) in asia-south1</p>
+          </div>
+          <div class="bg-slate-900 border border-amber-500/40 rounded-xl p-3 text-center">
+            <div class="text-xs text-amber-400 font-mono font-semibold">Zero-Downtime</div>
+            <div class="text-lg font-bold text-white mt-1">&lt; 5ms Fallback</div>
+            <p class="text-[11px] text-slate-400 mt-1">Deterministic offline safety net</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex justify-between items-center text-xs text-slate-300">
+          <div><strong class="text-white">Live Service:</strong> https://reloop-app-882475917539.asia-south1.run.app</div>
+          <div class="text-emerald-400 font-mono">Status: Production Deployed &amp; Verified</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Live Presenter Subtitle & Script Bar (What to say!) -->
+    <div class="bg-slate-950 border-t border-slate-800 px-6 py-3 flex items-start gap-4">
+      <div class="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase px-2.5 py-1 rounded shrink-0 mt-0.5">
+        Voiceover Script
+      </div>
+      <p id="scriptText" class="text-xs md:text-sm text-slate-200 leading-relaxed italic">
+        "A resident simply snaps a picture of an item. Behind the scenes, Gemini 2.5 Flash on Vertex AI analyzes the image in 1.2 seconds, automatically identifying the item category, dimensions, and materials without tedious forms."
+      </p>
+    </div>
+
+  </div>
+
+  <script>
+    let currentStep = 0;
+    let isPlaying = true;
+    let timerSeconds = 0;
+    let autoInterval;
+    let timerInterval;
+
+    const steps = [
+      {
+        path: "/assess",
+        script: "A resident simply snaps a picture of an item. Behind the scenes, Gemini 2.5 Flash on Vertex AI analyzes the image in 1.2 seconds, automatically identifying the item category, dimensions, and materials without tedious forms."
+      },
+      {
+        path: "/assess (Clarification)",
+        script: "Instead of guessing, our AI proactively asks 2 targeted condition questions—like whether the leg wobble is loose screws or split wood. This dynamic disambiguation ensures we never send a repairable item to the landfill."
+      },
+      {
+        path: "/results",
+        script: "Our recommendation engine ranks options strictly by sustainability: Repair > Reuse > Donate > Recycle. With one single click, the item is instantly published to local seekers within a 5-kilometer walking radius."
+      },
+      {
+        path: "/community",
+        script: "Every two-party verified handover adds one symbolic tree to our Virtual Community Grove, unlocking neighborhood milestones every 10 handovers with zero greenwashing and accessible static motion controls."
+      },
+      {
+        path: "/api/config",
+        script: "Under the hood, ReLoop is 100% production-ready: hosted on Google Cloud Run in Mumbai, powered by Vertex AI, and verified with 76 automated tests and an instant offline fallback engine for guaranteed 100% uptime."
+      }
+    ];
+
+    function setStep(index) {
+      currentStep = index;
+      for (let i = 0; i < 5; i++) {
+        const screen = document.getElementById('screen-' + i);
+        const btn = document.getElementById('btn-' + i);
+        if (i === index) {
+          screen.classList.remove('hidden');
+          btn.className = "px-3 py-1.5 rounded-md font-medium transition bg-emerald-600 text-white";
+        } else {
+          screen.classList.add('hidden');
+          btn.className = "px-3 py-1.5 rounded-md font-medium transition text-slate-400 hover:text-white";
+        }
+      }
+      document.getElementById('urlPath').textContent = steps[index].path;
+      document.getElementById('scriptText').textContent = '"' + steps[index].script + '"';
+    }
+
+    function nextStep() {
+      currentStep = (currentStep + 1) % steps.length;
+      setStep(currentStep);
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      const icon = document.getElementById('playIcon');
+      const text = document.getElementById('playText');
+      if (isPlaying) {
+        icon.textContent = "⏸️";
+        text.textContent = "Pause Auto-Run";
+        startAuto();
+      } else {
+        icon.textContent = "▶️";
+        text.textContent = "Resume Auto-Run";
+        clearInterval(autoInterval);
+      }
+    }
+
+    function startAuto() {
+      clearInterval(autoInterval);
+      autoInterval = setInterval(() => {
+        if (isPlaying) nextStep();
+      }, 7000); // changes screen every 7 seconds
+    }
+
+    // Start timer & auto-advance
+    startAuto();
+    timerInterval = setInterval(() => {
+      timerSeconds++;
+      const mins = Math.floor(timerSeconds / 60);
+      const secs = (timerSeconds % 60).toString().padStart(2, '0');
+      document.getElementById('timerText').textContent = `${mins}:${secs}`;
+    }, 1000);
+  </script>
+</body>
+</html>
